@@ -1,90 +1,85 @@
-# AstraGram для Android
+# AstraGram for Android
 
-Текущая версия исходников: **12.10.6-astra.112**. Пакет приложения: `org.ghostgram.messenger` (сохранён для совместимого обновления).
-Проект основан на [Telegram для Android](https://github.com/DrKLO/Telegram). Лицензия и уведомления сторонних компонентов сохранены в исходниках.
+**AstraGram** is an independent Android client based on the Telegram for Android source code. It keeps the familiar Telegram experience and adds optional tools for media, automation and project services.
 
-Проект переименован в AstraGram. Логотип с призраком и данные установленных
-аккаунтов сохранены. Обновления используют `update.codebyfox.ru:9443`, галочки
-и верификация — `verification.codebyfox.ru:9443`. В существующей панели появился
-раздел выдачи, смены типа и отзыва галочек. Подробности:
-`Documentation/GhostGram/veyl109-rebrand.md`. Материалы выпуска: `Release/AstraGram-110`.
+> AstraGram is not affiliated with Telegram, Yandex or exteraGram. Their names and services belong to their respective owners.
 
-В версии 110 значки заменены на TGS, выбранные владельцем. Подробности: `Documentation/GhostGram/veyl110-owner-badges.md`.
+[Latest release](https://github.com/FoxCoderGit/AstraGram/releases/latest) · [Report an issue](https://github.com/FoxCoderGit/AstraGram/issues) · [Security policy](SECURITY.md)
 
-Ниже — история предыдущих изменений под прежним названием.
+## Current release
 
-В ghost.108 исправлены сравнение versionCode, фоновые уведомления об обновлениях,
-проверка версии и подписи APK, докачка, повтор, пропуск версии и критические релизы.
-Обновлён серверный контракт. APK установлен и скопирован в Download телефона.
-Полная цепочка новой серверной публикации и встроенной установки пока не проверена.
-Отчёт: `Documentation/GhostGram/ghost108-updates-audit.md`.
+- Version: **12.10.6-astra.121**
+- Android package: `org.ghostgram.messenger` — retained to support updates over earlier installed builds without deleting local application data.
+- Download: [GitHub Releases](https://github.com/FoxCoderGit/AstraGram/releases/latest)
 
-В ghost.107 бейджи exteraGram заменены собственными отметками GhostGram:
-разработчик и поддержавший проект. Настройка удалена, подготовлен контракт
-данных будущего сервера; назначений до подключения сервера нет.
-В меню плагинов убраны режим разработчика и отдельный перезапуск движка,
-исправлена полная ширина строк для выравнивания переключателей справа.
-Подробности: `Documentation/GhostGram/ghost107-project-badges.md`.
+## AstraGram additions
 
-В ghost.104 уменьшен экран плагинов, исправлены размер и цвет иконки в «Триггере».
-yt-dlp запускается с отдельным окружением Python: устранён конфликт Python 3.12
-с экспортированным Chaquopy PYTHONPATH от Python 3.11.
+The following capabilities are added or extended beyond the standard Telegram Android client.
 
-В ghost.103 добавлены перестановка кнопок вложений удерживанием, настраиваемый
-«Триггер» запуска приложений и выключенная по умолчанию загрузка видео через
-оригинальный yt-dlp с FFmpeg, EJS и QuickJS. Обновлено оформление плагинов;
-цвета следуют теме. Подробности: `Documentation/GhostGram/ghost103-attachments-video.md`.
+### Media and productivity
 
-В ghost.100 музыка, рисование голосовых и перевод всего чата включаются отдельными
-переключателями в «Плагинах» и изначально выключены. Перевод отдельных сообщений
-доступен независимо. Mortal Kombat удалён из приложения. Для поддерживаемых
-сообщений защищённых облачных чатов добавлена отправка новой копии без источника.
-Подробности: `Documentation/GhostGram/ghost100-optional-features.md` в комплекте.
-В ghost.101 исправлено отображение плашки перевода при выключенном переводе всего чата.
+- **Video link download** — optional yt-dlp integration with FFmpeg conversion. A supported public link can be queued as a video and sent after download completes.
+- **Background media tasks** — queued downloads and uploads continue outside the current chat and are visible in the background-task screen.
+- **Attachment menu layout** — rearrange supported attachment actions by drag and drop.
+- **Drawing for voice messages** — optional visual drawing mode for creating a silent voice-message animation.
+- **Yandex Music** — optional search, favourites and audio sending. Each user signs in with their own Yandex account or token; AstraGram does not ship a shared music account.
 
-В экспериментальном режиме добавлен раздел «Я.музыка» в меню вложений:
-вход через Яндекс, поиск, прослушивание и отправка доступного MP3 аудиофайлом.
-В ghost.94 исправлена ошибка «Яндекс вернул неподдерживаемый формат» при разборе ссылки на аудио.
-В ghost.95 исправлен вылет при отправке аудио без подписи.
-В ghost.96 добавлены «Мне нравится», поиск по коллекции и прямое подключение
-Я.музыки через физическую сеть в пределах разрешённого Android обхода VPN.
-В ghost.97 добавлен HTTPS-шлюз через собственный RU-сервер для VPN-профилей,
-запрещающих прямой выход. Устройство привязывается одноразовым кодом; SSH-пароль
-и закрытые ключи сервера в APK не встраиваются.
-В ghost.98 подключение к `music.codebyfox.ru` стало автоматическим для клиентов
-по действующей авторизации GhostGram, без ввода адреса и кодов.
-В ghost.99 личный вход в Яндекс сохраняется для всех аккаунтов Telegram
-на устройстве с автоматическим переносом прежней зашифрованной сессии.
-Каждое устройство использует личный вход своего пользователя; общего
-музыкального токена и серверного пароля в приложении нет.
-Подробности и ограничения: `Documentation/GhostGram/ghost93-yandex-music.md`
-в комплекте переноса. Живая проверка с аккаунтом Яндекса выполняется на телефоне.
+### Messaging and interface
 
-## Сборка
+- **Reaction notifications** — Android notifications when another user reacts to your message, including while the app is in the background.
+- **Plugin controls** — built-in optional features are enabled independently from the Plugins screen.
+- **AstraGram badges** — server-verified creator and supporter badges with an explanation sheet on tap.
+- **exteraGram supporter badges** — optional display of supporter badges sourced from the public exteraGram profile service.
 
-Нужны JDK из Android Studio, Python 3.11+, Android SDK 36 / Build Tools 36.0.0, NDK 27.2.12479018 и CMake 3.22.1. Эти версии указаны в настройках проекта.
+### Reliability and releases
 
-Откройте проект в Android Studio и задайте SDK либо создайте локальный `local.properties` с `sdk.dir=...`. `JAVA_HOME` должен указывать на JDK. На первом запуске Gradle скачивает зависимости.
+- **Signed in-app updates** — background update checks, `versionCode` comparison, release notes, retry/resume support and APK SHA-256/signature validation before installation.
+- **Personal media cloud** — optional upload workflow using a private Telegram channel owned by the current account.
+- **Background connection support** — persistent connection controls intended to improve delivery reliability where Google push services are unavailable.
+
+## Privacy and security
+
+- The public repository does not contain the AstraGram client API values, signing key, administrator credentials, server private keys or user tokens.
+- Client API values are supplied through the ignored `astra.local.properties` file and are embedded only into a locally built APK. Anything embedded in an APK can be extracted; never place server passwords or private keys there.
+- Releases should be downloaded only from the [official GitHub Releases page](https://github.com/FoxCoderGit/AstraGram/releases/latest) and verified with the published SHA-256 checksum.
+- Optional integrations may send requests to their respective external services. Read each provider's terms before using it.
+
+## Build from source
+
+### Requirements
+
+- Android Studio JDK
+- Android SDK 36 and Build Tools 36.0.0
+- Android NDK 27.2.12479018
+- CMake 3.22.1
+- Python 3.11 or newer
+
+### Private client configuration
+
+Copy `astra.local.properties.example` to `astra.local.properties` and set the client values locally. The actual file is ignored by Git.
+
+```properties
+astraApiId=YOUR_TELEGRAM_API_ID
+astraApiHash=YOUR_TELEGRAM_API_HASH
+astraMapsApiKey=YOUR_GOOGLE_MAPS_API_KEY
+```
+
+Do not commit this file or add server credentials to it.
+
+### Build command
 
 ```powershell
 .\gradlew.bat :TMessagesProj_Ghost:assembleDebug -PghostOnly=true -Pandroid.injected.testOnly=false --max-workers=2 --console=plain
 ```
 
-APK появится в `TMessagesProj_Ghost/build/outputs/apk/debug/`. Скрипт `Tools/build-private-apk.ps1` проверяет готовый APK, по умолчанию копирует его в Download подключённого телефона и устанавливает обновление через ADB без удаления данных. Для сборки без телефона укажите `-Install:$false -CopyToPhone:$false`.
+The APK is written to `TMessagesProj_Ghost/build/outputs/apk/debug/`.
 
-Чтобы продолжать обновлять уже установленное приложение, используйте прежний `debug.keystore` из папки **Private** комплекта переноса. Подробности восстановления окружения находятся в отдельном файле `START-HERE.md` комплекта.
+For the project’s signed local distribution workflow, use `Tools/build-private-apk.ps1`. It validates the resulting APK before installation or copying to a connected Android device.
 
-## Состав проекта
+## Contributing
 
-- `TMessagesProj`, `TMessagesProj_Ghost`, `TMessagesProj_Modules`, `buildSrc`, `gradle` — исходники, библиотеки и сборка. Остальные модули Telegram сохранены.
-- `Tools/license-server` — сервер лицензирования и панель владельца; `Tools/kombat` — игровые компоненты и сервер.
-- `Tools/test-*`, `tests` — проверки; `Tools/waveform-lab` — редактор рисунков голосовых.
-- `Tools/optional-speech-models` — отдельные файлы для обслуживания сервера моделей; в APK они не встраиваются.
+Please read [CONTRIBUTING.md](CONTRIBUTING.md) before opening an issue or pull request. Do not include secrets, private account data, session files or APK signing material in reports.
 
-Руководство пользователя и история изменений вынесены в **Documentation** комплекта переноса. История Git, Android SDK, локальные кэши и доступы владельца в архив исходников не входят.
+## License and upstream
 
-Для повторной упаковки без кэшей и истории Git:
-
-```powershell
-python Tools/package-source.py --output ..\GhostGram-source.zip
-```
+This project is based on [Telegram for Android](https://github.com/DrKLO/Telegram). The original licence and notices for Telegram and third-party components remain in this repository. See [LICENSE](LICENSE) and the relevant source directories for details.
