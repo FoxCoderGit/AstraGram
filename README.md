@@ -4,38 +4,40 @@
 
 > AstraGram is not affiliated with Telegram, Yandex or exteraGram. Their names and services belong to their respective owners.
 
-[Latest release](https://github.com/FoxCoderGit/AstraGram/releases/latest) · [Report an issue](https://github.com/FoxCoderGit/AstraGram/issues) · [Security policy](SECURITY.md)
+[Latest release](https://github.com/FoxCoderGit/AstraGram/releases/latest) | [Report an issue](https://github.com/FoxCoderGit/AstraGram/issues) | [Security policy](SECURITY.md)
 
 ## Current release
 
 - Version: **12.10.6-astra.121**
-- Android package: `org.ghostgram.messenger` — retained to support updates over earlier installed builds without deleting local application data.
+- Android package: `org.ghostgram.messenger` - retained to support updates over earlier installed builds without deleting local application data.
 - Download: [GitHub Releases](https://github.com/FoxCoderGit/AstraGram/releases/latest)
 
 ## AstraGram additions
 
 The following capabilities are added or extended beyond the standard Telegram Android client.
 
+For the complete user-facing feature catalogue, see [FEATURES.md](FEATURES.md).
+
 ### Media and productivity
 
-- **Video link download** — optional yt-dlp integration with FFmpeg conversion. A supported public link can be queued as a video and sent after download completes.
-- **Background media tasks** — queued downloads and uploads continue outside the current chat and are visible in the background-task screen.
-- **Attachment menu layout** — rearrange supported attachment actions by drag and drop.
-- **Drawing for voice messages** — optional visual drawing mode for creating a silent voice-message animation.
-- **Yandex Music** — optional search, favourites and audio sending. Each user signs in with their own Yandex account or token; AstraGram does not ship a shared music account.
+- **Video link download** - optional yt-dlp integration with FFmpeg conversion. A supported public link can be queued as a video and sent after download completes.
+- **Background media tasks** - queued downloads and uploads continue outside the current chat and are visible in the background-task screen.
+- **Attachment menu layout** - rearrange supported attachment actions by drag and drop.
+- **Drawing for voice messages** - optional visual drawing mode for creating a silent voice-message animation.
+- **Yandex Music** - optional search, favourites and audio sending. Each user signs in with their own Yandex account or token; AstraGram does not ship a shared music account.
 
 ### Messaging and interface
 
-- **Reaction notifications** — Android notifications when another user reacts to your message, including while the app is in the background.
-- **Plugin controls** — built-in optional features are enabled independently from the Plugins screen.
-- **AstraGram badges** — server-verified creator and supporter badges with an explanation sheet on tap.
-- **exteraGram supporter badges** — optional display of supporter badges sourced from the public exteraGram profile service.
+- **Reaction notifications** - Android notifications when another user reacts to your message, including while the app is in the background.
+- **Plugin controls** - built-in optional features are enabled independently from the Plugins screen.
+- **AstraGram badges** - server-verified creator and supporter badges with an explanation sheet on tap.
+- **exteraGram supporter badges** - optional display of supporter badges sourced from the public exteraGram profile service.
 
 ### Reliability and releases
 
-- **Signed in-app updates** — background update checks, `versionCode` comparison, release notes, retry/resume support and APK SHA-256/signature validation before installation.
-- **Personal media cloud** — optional upload workflow using a private Telegram channel owned by the current account.
-- **Background connection support** — persistent connection controls intended to improve delivery reliability where Google push services are unavailable.
+- **Signed in-app updates** - background update checks, `versionCode` comparison, release notes, retry/resume support and APK SHA-256/signature validation before installation.
+- **Personal media cloud** - optional upload workflow using a private Telegram channel owned by the current account.
+- **Background connection support** - persistent connection controls intended to improve delivery reliability where Google push services are unavailable.
 
 ## Privacy and security
 
@@ -74,7 +76,7 @@ Do not commit this file or add server credentials to it.
 
 The APK is written to `TMessagesProj_Ghost/build/outputs/apk/debug/`.
 
-For the project’s signed local distribution workflow, use `Tools/build-private-apk.ps1`. It validates the resulting APK before installation or copying to a connected Android device.
+For the project's signed local distribution workflow, use `Tools/build-private-apk.ps1`. It validates the resulting APK before installation or copying to a connected Android device.
 
 ## Contributing
 
