@@ -1,0 +1,13 @@
+allprojects {
+    afterEvaluate { project ->
+        if (project.name == 'TMessagesProj' && project.hasProperty('ghostOfflineLsplant')) {
+            project.configurations.configureEach {
+                exclude group: 'com.aliucord.lsplant', module: 'lsplant'
+            }
+            project.dependencies.add('runtimeOnly', project.files(project.findProperty('ghostOfflineLsplant').toString()))
+        }
+        if (project.name == 'TMessagesProj_Ghost' && project.hasProperty('ghostSigningStore')) {
+            project.extensions.getByName('android').signingConfigs.getByName('debug').storeFile = new File(project.findProperty('ghostSigningStore').toString())
+        }
+    }
+}

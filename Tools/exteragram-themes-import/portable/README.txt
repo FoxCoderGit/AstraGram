@@ -1,0 +1,17 @@
+Three exteraGram Monet themes exported with a fixed Telegram-blue palette. Open an .attheme file in Telegram to preview and apply it. Dynamic system colors are available in GhostGram built-in Monet themes, not in these static exports.
+
+exteraGram Monet themes
+
+Source: exteraGram 12.10.6, package com.exteragram.messenger, official RuStore distribution.
+https://www.rustore.ru/catalog/app/com.exteragram.messenger
+Project: https://github.com/exteraSquad/exteraGram
+The project declares GNU GPL v2. Themes are credited to the exteraGram team.
+The three ghost_monet_*.attheme assets are byte-for-byte extractions of the original
+monet_light.attheme, monet_dark.attheme and monet_black.attheme files.
+GhostGram supplies its own palette-expression adapter for the current Telegram client.
+
+Color mathematics: Google Material Color Utilities, Apache License 2.0.
+https://github.com/material-foundation/material-color-utilities
+Upstream copyright headers are retained; Java packages are relocated under
+org.telegram.ui.ActionBar.monet. See material-color-utilities-LICENSE.txt.
+Pinned upstream commit: 5b3618b16fdc3825e21d5679bafd144662088ea1

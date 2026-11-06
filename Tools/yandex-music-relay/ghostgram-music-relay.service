@@ -1,0 +1,27 @@
+[Unit]
+Description=GhostGram private Yandex Music HTTPS relay
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ghostgram-music
+Group=ghostgram-music
+ExecStart=/usr/bin/python3 -I /opt/ghostgram-music-relay/relay.py --state /var/lib/ghostgram-music-relay/state.json --cert /var/lib/ghostgram-music-relay/server.pem --key /var/lib/ghostgram-music-relay/server.key --port 8443
+Restart=on-failure
+RestartSec=3
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/ghostgram-music-relay
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+CapabilityBoundingSet=
+MemoryMax=192M
+TasksMax=64
+LimitNOFILE=256
+
+[Install]
+WantedBy=multi-user.target

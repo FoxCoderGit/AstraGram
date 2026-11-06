@@ -1,0 +1,61 @@
+#include <stdint.h>
+static struct {unsigned id;void (*fn)(int);} callbacks[1024];static int count;
+void gg_callback_register(unsigned id,void (*fn)(int)){int i;for(i=0;i<count;i++)if(callbacks[i].id==id)return;if(count<1024){callbacks[count].id=id;callbacks[count++].fn=fn;}}
+unsigned gg_callback_id(void (*fn)(int)){int i;for(i=0;i<count;i++)if(callbacks[i].fn==fn)return callbacks[i].id;return 0;}
+void (*gg_callback_pointer(unsigned id))(int){int i;for(i=0;i<count;i++)if(callbacks[i].id==id)return callbacks[i].fn;return 0;}
+extern void gg_register_callbacks_0(void);
+extern void gg_register_callbacks_3(void);
+extern void gg_register_callbacks_6(void);
+extern void gg_register_callbacks_9(void);
+extern void gg_register_callbacks_10(void);
+extern void gg_register_callbacks_11(void);
+extern void gg_register_callbacks_13(void);
+extern void gg_register_callbacks_14(void);
+extern void gg_register_callbacks_17(void);
+extern void gg_register_callbacks_19(void);
+extern void gg_register_callbacks_21(void);
+extern void gg_register_callbacks_22(void);
+extern void gg_register_callbacks_25(void);
+extern void gg_register_callbacks_26(void);
+extern void gg_register_callbacks_29(void);
+extern void gg_register_callbacks_30(void);
+extern void gg_register_callbacks_32(void);
+extern void gg_register_callbacks_34(void);
+extern void gg_register_callbacks_37(void);
+extern void gg_register_callbacks_38(void);
+extern void gg_register_callbacks_39(void);
+extern void gg_register_callbacks_40(void);
+extern void gg_register_callbacks_41(void);
+extern void gg_register_callbacks_42(void);
+extern void gg_register_callbacks_43(void);
+extern void gg_register_callbacks_44(void);
+extern void gg_register_callbacks_45(void);
+extern void gg_register_callbacks_46(void);
+extern void gg_register_callbacks_47(void);
+extern void gg_register_callbacks_48(void);
+extern void gg_register_callbacks_49(void);
+extern void gg_register_callbacks_50(void);
+extern void gg_register_callbacks_52(void);
+extern void gg_register_callbacks_54(void);
+extern void gg_register_callbacks_55(void);
+extern void gg_register_callbacks_56(void);
+extern void gg_register_callbacks_57(void);
+extern void gg_register_callbacks_58(void);
+extern void gg_register_callbacks_59(void);
+extern void gg_register_callbacks_60(void);
+extern void gg_register_callbacks_62(void);
+extern void gg_register_callbacks_63(void);
+extern void gg_register_callbacks_66(void);
+extern void gg_register_callbacks_67(void);
+extern void gg_register_callbacks_69(void);
+extern void gg_register_callbacks_70(void);
+extern void gg_register_callbacks_71(void);
+extern void gg_register_callbacks_72(void);
+extern void gg_register_callbacks_73(void);
+extern void gg_register_callbacks_75(void);
+extern void gg_register_callbacks_76(void);
+extern void gg_register_callbacks_77(void);
+extern void gg_register_callbacks_78(void);
+extern void gg_register_callbacks_79(void);
+extern void gg_register_callbacks_80(void);
+void gg_callbacks_init(void){count=0;gg_register_callbacks_0();gg_register_callbacks_3();gg_register_callbacks_6();gg_register_callbacks_9();gg_register_callbacks_10();gg_register_callbacks_11();gg_register_callbacks_13();gg_register_callbacks_14();gg_register_callbacks_17();gg_register_callbacks_19();gg_register_callbacks_21();gg_register_callbacks_22();gg_register_callbacks_25();gg_register_callbacks_26();gg_register_callbacks_29();gg_register_callbacks_30();gg_register_callbacks_32();gg_register_callbacks_34();gg_register_callbacks_37();gg_register_callbacks_38();gg_register_callbacks_39();gg_register_callbacks_40();gg_register_callbacks_41();gg_register_callbacks_42();gg_register_callbacks_43();gg_register_callbacks_44();gg_register_callbacks_45();gg_register_callbacks_46();gg_register_callbacks_47();gg_register_callbacks_48();gg_register_callbacks_49();gg_register_callbacks_50();gg_register_callbacks_52();gg_register_callbacks_54();gg_register_callbacks_55();gg_register_callbacks_56();gg_register_callbacks_57();gg_register_callbacks_58();gg_register_callbacks_59();gg_register_callbacks_60();gg_register_callbacks_62();gg_register_callbacks_63();gg_register_callbacks_66();gg_register_callbacks_67();gg_register_callbacks_69();gg_register_callbacks_70();gg_register_callbacks_71();gg_register_callbacks_72();gg_register_callbacks_73();gg_register_callbacks_75();gg_register_callbacks_76();gg_register_callbacks_77();gg_register_callbacks_78();gg_register_callbacks_79();gg_register_callbacks_80();}

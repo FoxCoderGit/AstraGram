@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Waveform Lab — рисунки голосовых</title><link rel="stylesheet" href="style.css"></head>
+<body>
+<header><div class="mark">∿</div><div><h1>Waveform Lab</h1><p>Рисунки голосовых · локальный стенд</p></div><span class="badge">Без подключения к Telegram</span></header>
+<main>
+<aside>
+ <h2>Рисунок и алгоритм</h2>
+ <label>Заготовка<select id="preset" aria-label="Заготовка"></select></label>
+ <label>Перевод рисунка в полоски<select id="projection"><option value="envelope">Внешний контур от центральной оси</option><option value="height">Высота столбика без смещения</option></select></label>
+ <label>Ширина фигуры <output id="span-value"></output><input id="span" type="range" min="10" max="100" value="18"></label>
+ <label>Ширина волны в чате, dp<input id="width" type="number" min="30" max="360" value="180"></label>
+ <label>Упаковка 5-битных значений<select id="codec" aria-label="Упаковка 5-битных значений"><option value="ghostgram">Как в текущем GhostGram</option><option value="native">Как в нативном коде Telegram (сравнение)</option></select></label>
+ <div class="actions"><button id="undo">Отменить</button><button id="clear">Очистить</button><button id="reset">Вернуть заготовку</button></div>
+ <p class="hint">В редакторе можно рисовать мышью. По умолчанию изменяется симметричная высота. Экспериментальный режим позволяет менять верхний и нижний край отдельно.</p>
+ <label class="check"><input id="offset" type="checkbox">Эксперимент: независимые края</label>
+ <label class="check"><input id="overlay" type="checkbox" checked>Показать исходный контур</label>
+ <h2>Сохранить результат</h2>
+ <div class="actions"><button id="export">JSON</button><button id="svg-export">SVG сравнения</button></div>
+ <label class="import">Открыть JSON<input id="import" type="file" accept=".json,application/json"></label>
+ <p id="notice" role="status"></p>
+</aside>
+<section class="stage">
+ <div class="section-title"><div><h2>Редактор 100 столбиков</h2><p>Увеличен по высоте для рисования. Это не размер сообщения.</p></div><span id="selection" class="badge">Сердце</span></div>
+ <canvas id="editor" width="1000" height="300" aria-label="Редактор полосок" role="img"></canvas>
+ <div class="legend"><span class="pink">Исходная геометрия</span><span class="cyan">Допустимая симметричная волна</span></div>
+ <div class="results">
+  <article><h3>1. Исходная геометрия</h3><p>100 столбиков перед выбором полосок по ширине сообщения.</p><div id="source" class="plot"></div></article>
+  <article><h3>2. Реальное отображение в Telegram</h3><p>5 бит → выбор столбиков → шаг 3 dp, толщина 2 dp, высота до 16 dp.</p><div id="telegram" class="plot"></div></article>
+ </div>
+ <article class="chat-card"><div class="section-title"><h3>В размере голосового сообщения</h3><label>Масштаб <select id="zoom"><option value="1">1×</option><option value="2" selected>2×</option><option value="4">4×</option></select></label></div><div class="chat"><div class="bubble"><span class="play">▶</span><div><div id="chat-wave"></div><small>00:05</small></div><small class="time">19:47</small></div></div><p>При увеличении обе оси масштабируются одинаково.</p></article>
+ <article class="finding"><h3>Что сохранится после отправки</h3><p id="finding"></p><div id="stats"></div></article>
+ <details><summary>Данные для переноса в мод</summary><textarea id="data" readonly aria-label="100 высот полосок"></textarea><p id="hex"></p></details>
+ <footer>Модель текущего Android-клиента из SeekBarWaveform.calculateHeights / addBar. Анимация появления и проигрывания не симулируется. Сдвиг края не передаётся в обычном waveform.</footer>
+</section>
+</main><script src="engine.js"></script><script src="optimized.js"></script><script src="app.js"></script></body></html>

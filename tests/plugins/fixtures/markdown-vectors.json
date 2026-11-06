@@ -1,0 +1,292 @@
+[
+  {
+    "input": "plain",
+    "text": "plain",
+    "entities": []
+  },
+  {
+    "input": "*bold*",
+    "text": "bold",
+    "entities": [
+      {
+        "type": "bold",
+        "offset": 0,
+        "length": 4,
+        "language": null,
+        "url": null,
+        "document_id": null
+      }
+    ]
+  },
+  {
+    "input": "**bold**",
+    "text": "bold",
+    "entities": []
+  },
+  {
+    "input": "_italic_",
+    "text": "italic",
+    "entities": [
+      {
+        "type": "italic",
+        "offset": 0,
+        "length": 6,
+        "language": null,
+        "url": null,
+        "document_id": null
+      }
+    ]
+  },
+  {
+    "input": "__under__",
+    "text": "under",
+    "entities": [
+      {
+        "type": "underline",
+        "offset": 0,
+        "length": 5,
+        "language": null,
+        "url": null,
+        "document_id": null
+      }
+    ]
+  },
+  {
+    "input": "~strike~",
+    "text": "strike",
+    "entities": [
+      {
+        "type": "strikethrough",
+        "offset": 0,
+        "length": 6,
+        "language": null,
+        "url": null,
+        "document_id": null
+      }
+    ]
+  },
+  {
+    "input": "||secret||",
+    "text": "secret",
+    "entities": [
+      {
+        "type": "spoiler",
+        "offset": 0,
+        "length": 6,
+        "language": null,
+        "url": null,
+        "document_id": null
+      }
+    ]
+  },
+  {
+    "input": "`code`",
+    "text": "code",
+    "entities": [
+      {
+        "type": "code",
+        "offset": 0,
+        "length": 4,
+        "language": null,
+        "url": null,
+        "document_id": null
+      }
+    ]
+  },
+  {
+    "input": "```python\nprint(1)\n```",
+    "text": "print(1)\n",
+    "entities": [
+      {
+        "type": "pre",
+        "offset": 0,
+        "length": 8,
+        "language": "python",
+        "url": null,
+        "document_id": null
+      }
+    ]
+  },
+  {
+    "input": "[site](https://example.com)",
+    "text": "site",
+    "entities": [
+      {
+        "type": "text_link",
+        "offset": 0,
+        "length": 4,
+        "language": null,
+        "url": "https://example.com",
+        "document_id": null
+      }
+    ]
+  },
+  {
+    "input": "![emoji](12345)",
+    "text": "!emoji",
+    "entities": [
+      {
+        "type": "custom_emoji",
+        "offset": 1,
+        "length": 5,
+        "language": null,
+        "url": null,
+        "document_id": 12345
+      }
+    ]
+  },
+  {
+    "input": "![emoji](tg://emoji?id=12345)",
+    "text": "!emoji",
+    "entities": [
+      {
+        "type": "text_link",
+        "offset": 1,
+        "length": 5,
+        "language": null,
+        "url": "tg://emoji?id=12345",
+        "document_id": null
+      }
+    ]
+  },
+  {
+    "input": "*a _b_ c*",
+    "text": "a b c",
+    "entities": [
+      {
+        "type": "italic",
+        "offset": 2,
+        "length": 1,
+        "language": null,
+        "url": null,
+        "document_id": null
+      },
+      {
+        "type": "bold",
+        "offset": 0,
+        "length": 5,
+        "language": null,
+        "url": null,
+        "document_id": null
+      }
+    ]
+  },
+  {
+    "input": "\\*literal\\*",
+    "text": "*literal*",
+    "entities": []
+  },
+  {
+    "input": "😀 *bold*",
+    "text": "😀 bold",
+    "entities": [
+      {
+        "type": "bold",
+        "offset": 3,
+        "length": 4,
+        "language": null,
+        "url": null,
+        "document_id": null
+      }
+    ]
+  },
+  {
+    "input": "*😀*",
+    "text": "😀",
+    "entities": [
+      {
+        "type": "bold",
+        "offset": 0,
+        "length": 2,
+        "language": null,
+        "url": null,
+        "document_id": null
+      }
+    ]
+  },
+  {
+    "input": "a\r\nb",
+    "text": "a\nb",
+    "entities": []
+  },
+  {
+    "input": "*unclosed",
+    "error_type": "SyntaxError",
+    "error": "Found unclosed markdown elements: '*' at message offset 0"
+  },
+  {
+    "input": "[bad](link",
+    "text": "[bad](link",
+    "entities": []
+  },
+  {
+    "input": "`unclosed",
+    "error_type": "SyntaxError",
+    "error": "Unclosed ` opened near markdown offset 0!"
+  },
+  {
+    "input": "||unclosed",
+    "error_type": "SyntaxError",
+    "error": "Found unclosed markdown elements: '||' at message offset 0"
+  },
+  {
+    "input": "",
+    "text": "",
+    "entities": []
+  },
+  {
+    "input": "[*bold*](https://example.com)",
+    "text": "*bold*",
+    "entities": [
+      {
+        "type": "text_link",
+        "offset": 0,
+        "length": 6,
+        "language": null,
+        "url": "https://example.com",
+        "document_id": null
+      }
+    ]
+  },
+  {
+    "input": "a_b_c",
+    "text": "abc",
+    "entities": [
+      {
+        "type": "italic",
+        "offset": 1,
+        "length": 1,
+        "language": null,
+        "url": null,
+        "document_id": null
+      }
+    ]
+  },
+  {
+    "input": "@user_name",
+    "text": "@user_name",
+    "entities": []
+  },
+  {
+    "input": "*one* *two*",
+    "text": "one two",
+    "entities": [
+      {
+        "type": "bold",
+        "offset": 0,
+        "length": 3,
+        "language": null,
+        "url": null,
+        "document_id": null
+      },
+      {
+        "type": "bold",
+        "offset": 4,
+        "length": 3,
+        "language": null,
+        "url": null,
+        "document_id": null
+      }
+    ]
+  }
+]

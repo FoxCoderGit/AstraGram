@@ -1,0 +1,10 @@
+[package]
+name = "ghost-kombat-android"
+version = "0.1.0"
+edition = "2021"
+[lib]
+name = "ghostkombat"
+crate-type = ["cdylib"]
+[dependencies]
+ghost-kombat-core = {path="../core"}
+jni = "0.21"

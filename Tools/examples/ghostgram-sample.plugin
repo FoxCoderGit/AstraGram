@@ -1,0 +1,43 @@
+from base_plugin import BasePlugin, MenuItemData, MenuItemType, HookResult, HookStrategy
+from ui.settings import Header, Switch, Input, Selector, Text, Divider
+from android_utils import run_on_ui_thread
+from ui.bulletin import BulletinHelper
+
+__id__ = "ghostgram_sample"
+__name__ = "GhostGram Sample"
+__version__ = "1.0.0"
+__author__ = "GhostGram"
+__description__ = "Проверяет жизненный цикл, настройки, меню и хук отправки."
+__min_version__ = "12.10.6"
+
+
+class GhostGramSample(BasePlugin):
+    def on_plugin_load(self):
+        self.add_on_send_message_hook()
+        self.add_menu_item(MenuItemData(
+            menu_type=MenuItemType.MAIN_MENU,
+            text="Тест плагина",
+            item_id="sample_menu",
+            on_click=lambda context: run_on_ui_thread(
+                lambda: BulletinHelper.show_success("GhostGram plugin API работает")
+            )
+        ))
+        self.log("loaded")
+
+    def on_plugin_unload(self):
+        self.log("unloaded")
+
+    def on_send_message_hook(self, account, params):
+        return HookResult(strategy=HookStrategy.NONE)
+
+    def create_settings(self):
+        return [
+            Header(text="Проверка настроек"),
+            Switch(key="enabled_option", text="Тестовый переключатель", default=True),
+            Input(key="sample_text", text="Тестовый текст", default="GhostGram"),
+            Selector(key="sample_mode", text="Режим", items=["Первый", "Второй"], default=0),
+            Text(text="Показать уведомление", on_click=lambda context: run_on_ui_thread(
+                lambda: BulletinHelper.show_success("Настройка плагина вызвана")
+            )),
+            Divider()
+        ]

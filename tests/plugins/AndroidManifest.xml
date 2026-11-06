@@ -1,0 +1,5 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="org.ghostgram.contracttests">
+    <uses-sdk android:minSdkVersion="24" android:targetSdkVersion="36" />
+    <application android:label="GhostGram contract checks" android:testOnly="true" />
+    <instrumentation android:name="org.ghostgram.contracttests.ContractInstrumentation" android:targetPackage="org.ghostgram.messenger" android:functionalTest="true" />
+</manifest>

@@ -1,0 +1,55 @@
+    private final class Controls extends View {
+        final Paint paint=new Paint(Paint.ANTI_ALIAS_FLAG);
+        final RectF[] buttons=new RectF[7];
+        final int[] masks={GhostKombatArcade.HP,GhostKombatArcade.HK,GhostKombatArcade.BLOCK,GhostKombatArcade.LP,GhostKombatArcade.LK,0,0};
+        final String[] labels={"Y","B","RB","X","A","ИГРОК 1","ИГРОК 2"};
+        final String[] actions={"HP","HK","БЛОК","LP","LK"};
+        final int[] colors={0xfff5d26b,0xfffa6c70,0xffcad5e0,0xff60aaff,0xff58cc8b};
+        final SparseIntArray held=new SparseIntArray();int joystick=-1,practicePlayer;float originX,originY,jx,jy;final float d;
+        Controls(Context context){super(context);d=getResources().getDisplayMetrics().density;for(int i=0;i<buttons.length;i++)buttons[i]=new RectF();setContentDescription("Геймпад: джойстик слева, Y верхний удар рукой, X нижний удар рукой, B верхний удар ногой, A нижний удар ногой, RB блок");}
+        float stickRadius(){return Math.min(67*d,Math.min(getWidth()*.105f,getHeight()*.23f));}
+        float centerY(){float radius=stickRadius();return Math.max(radius+16*d,Math.min(getHeight()-radius-16*d,getHeight()*position));}
+        void layoutButtons(){
+            float w=getWidth(),h=getHeight(),r=Math.min(31*d,Math.min(h*.095f,w*.037f)),gap=r*2.13f,x=w*.864f;
+            float y=Math.max(gap*2.7f,Math.min(h-r-gap-12*d,h*position));
+            float[][] centers={{x,y-gap},{x+gap,y},{x,y-gap*2.05f},{x-gap,y},{x,y+gap}};
+            for(int i=0;i<5;i++){float rx=i==2?r*1.2f:r,ry=i==2?r*.58f:r;buttons[i].set(centers[i][0]-rx,centers[i][1]-ry,centers[i][0]+rx,centers[i][1]+ry);}
+            buttons[5].set(w*.02f,10*d,w*.15f,42*d);buttons[6].set(w*.845f,10*d,w*.98f,42*d);
+        }
+        @Override protected void onDraw(Canvas canvas){
+            float w=getWidth(),h=getHeight();layoutButtons();
+            if(!renderer.error.isEmpty()){text(canvas,renderer.error,w/2,h/2,16,0xffffa29d);return;}
+            if(!renderer.ready){text(canvas,"Загрузка оригинальной MK1…",w/2,h/2,18,Color.WHITE);if(resumed)postInvalidateOnAnimation();return;}
+            float radius=stickRadius(),cx=joystick<0?w*.13f:originX,cy=joystick<0?centerY():originY;
+            paint.setStyle(Paint.Style.FILL);paint.setColor(((int)(opacity*160)<<24)|0x101a24);canvas.drawCircle(cx,cy,radius,paint);
+            paint.setColor(((int)(opacity*210)<<24)|0x8196aa);paint.setStyle(Paint.Style.STROKE);paint.setStrokeWidth(1.5f*d);canvas.drawCircle(cx,cy,radius,paint);canvas.drawCircle(cx,cy,radius*.72f,paint);paint.setStyle(Paint.Style.FILL);
+            for(int i=0;i<4;i++){double angle=i*Math.PI/2;float px=cx+(float)Math.cos(angle)*radius*.84f,py=cy+(float)Math.sin(angle)*radius*.84f;canvas.drawCircle(px,py,2*d,paint);}
+            paint.setColor(((int)(opacity*255)<<24)|0x90abc4);canvas.drawCircle(cx+jx*radius*.58f,cy+jy*radius*.58f,radius*.39f,paint);
+            paint.setStyle(Paint.Style.STROKE);paint.setStrokeWidth(2*d);paint.setColor(((int)(opacity*255)<<24)|0xd1e4f5);canvas.drawCircle(cx+jx*radius*.58f,cy+jy*radius*.58f,radius*.39f,paint);paint.setStyle(Paint.Style.FILL);
+            for(int i=0;i<buttons.length;i++){
+                if(session!=null&&i>=5)continue;RectF b=buttons[i];boolean down=i<5&&((input|secondInput)&masks[i])!=0;
+                paint.setStyle(Paint.Style.FILL);paint.setColor(((int)(opacity*230)<<24)|(down?0x45596a:0x14222f));canvas.drawRoundRect(b,b.height()/2,b.height()/2,paint);
+                paint.setStyle(Paint.Style.STROKE);paint.setStrokeWidth((down?3:1.6f)*d);paint.setColor(i<5?colors[i]:0xff8296aa);paint.setAlpha((int)(opacity*255));canvas.drawRoundRect(b,b.height()/2,b.height()/2,paint);paint.setStyle(Paint.Style.FILL);paint.setAlpha(255);
+                if(i<5){text(canvas,labels[i],b.centerX(),b.centerY()+(i==2?4:0)*d,i==2?14:21,colors[i]);if(i!=2)text(canvas,actions[i],b.centerX(),b.centerY()+15*d,9,0xffbac8d6);}else text(canvas,labels[i],b.centerX(),b.centerY()+4*d,10,Color.WHITE);
+            }
+            if(paused)text(canvas,"ПАУЗА",w/2,h*.5f,26,Color.WHITE);if(resumed)postInvalidateOnAnimation();
+            if(session!=null){if(!session.status.isEmpty())text(canvas,session.status,w/2,h*.15f,15,Color.WHITE);if(session.finished&&!resultsShown){resultsShown=true;post(()->showDialog(new AlertDialog.Builder(getParentActivity(),getResourceProvider()).setTitle(session.status).setPositiveButton("Реванш",(dialog,which)->session.client.requestInvite(session.opponent)).setNegativeButton("Вернуться в переписку",(dialog,which)->finishFragment()).create()));}}
+        }
+        void text(Canvas c,String s,float x,float y,int size,int color){paint.setColor(color);paint.setTextAlign(Paint.Align.CENTER);paint.setTextSize(size*d);paint.setTypeface(Typeface.DEFAULT_BOLD);c.drawText(s,x,y,paint);}
+        void setButton(int pointer,int mask){int before=held.get(pointer,0);held.put(pointer,mask);if(mask!=0&&mask!=before)pendingPresses.getAndUpdate(v->v|mask);}
+        void updateStick(float x,float y){float scale=stickRadius()*.65f,dx=(x-originX)/scale,dy=(y-originY)/scale;float length=(float)Math.hypot(dx,dy);if(length<.17f){jx=jy=0;}else{float divisor=Math.max(1,length);jx=dx/divisor;jy=dy/divisor;}}
+        @Override public boolean onTouchEvent(MotionEvent event){
+            layoutButtons();int action=event.getActionMasked(),index=event.getActionIndex(),id=event.getPointerId(index);float x=event.getX(index),y=event.getY(index);
+            if(action==MotionEvent.ACTION_CANCEL){clear();return true;}
+            if(action==MotionEvent.ACTION_DOWN||action==MotionEvent.ACTION_POINTER_DOWN){int button=find(x,y);
+                if(button>=5&&session==null){practicePlayer=button-5;input=secondInput=0;pendingPresses.set(0);}
+                else if(button>=0&&button<5)setButton(id,masks[button]);
+                else if(x<getWidth()*.29f&&joystick<0){joystick=id;originX=getWidth()*.13f;originY=centerY();if(Math.hypot(x-originX,y-originY)>stickRadius()*1.25f){originX=Math.max(stickRadius(),Math.min(getWidth()*.22f,x));originY=Math.max(stickRadius(),Math.min(getHeight()-stickRadius(),y));}updateStick(x,y);}
+            }else if(action==MotionEvent.ACTION_MOVE){for(int i=0;i<event.getPointerCount();i++){int pointer=event.getPointerId(i);if(pointer==joystick)updateStick(event.getX(i),event.getY(i));else if(held.indexOfKey(pointer)>=0){int b=find(event.getX(i),event.getY(i));setButton(pointer,b>=0&&b<5?masks[b]:0);}}}
+            else if(action==MotionEvent.ACTION_UP||action==MotionEvent.ACTION_POINTER_UP){held.delete(id);if(id==joystick){joystick=-1;jx=jy=0;}}
+            int bits=0;for(int i=0;i<held.size();i++)bits|=held.valueAt(i);float length=(float)Math.hypot(jx,jy);if(length>.17f){float threshold=length*.38268343f;if(jx<-threshold)bits|=GhostKombatArcade.LEFT;if(jx>threshold)bits|=GhostKombatArcade.RIGHT;if(jy<-threshold)bits|=GhostKombatArcade.UP;if(jy>threshold)bits|=GhostKombatArcade.DOWN;}
+            if(session==null&&practicePlayer==1){secondInput=bits;input=0;}else{input=bits;secondInput=0;}invalidate();return true;
+        }
+        int find(float x,float y){int best=-1;double distance=1.28;for(int i=0;i<(session==null?7:5);i++){RectF b=buttons[i];if(i>=5){if(b.contains(x,y))return i;continue;}double dx=(x-b.centerX())/Math.max(1,b.width()/2),dy=(y-b.centerY())/Math.max(1,b.height()/2),value=Math.hypot(dx,dy);if(value<distance){best=i;distance=value;}}return best;}
+        void clear(){held.clear();joystick=-1;jx=jy=0;input=secondInput=0;pendingPresses.set(0);}
+    }

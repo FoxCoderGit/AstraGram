@@ -1,0 +1,26 @@
+[Unit]
+Description=GhostGram private license service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ghostgram-license
+Group=ghostgram-license
+WorkingDirectory=/opt/ghostgram-license
+Environment=GHOST_LICENSE_DATA=/var/lib/ghostgram-license
+ExecStart=/usr/bin/python3 /opt/ghostgram-license/server.py
+Restart=on-failure
+RestartSec=3
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/ghostgram-license
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+LimitNOFILE=1024
+MemoryMax=512M
+
+[Install]
+WantedBy=multi-user.target

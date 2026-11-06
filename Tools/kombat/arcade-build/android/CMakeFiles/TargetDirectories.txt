@@ -1,0 +1,3 @@
+C:/Users/vrfox/Desktop/telegram/Tools/kombat/arcade-build/android/CMakeFiles/ghostkombat.dir
+C:/Users/vrfox/Desktop/telegram/Tools/kombat/arcade-build/android/CMakeFiles/edit_cache.dir
+C:/Users/vrfox/Desktop/telegram/Tools/kombat/arcade-build/android/CMakeFiles/rebuild_cache.dir

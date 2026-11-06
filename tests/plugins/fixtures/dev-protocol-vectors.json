@@ -1,0 +1,56 @@
+[
+  {
+    "input": {
+      "@": "ping",
+      "#": 1
+    },
+    "output": {
+      "#": 1,
+      "pong": true
+    }
+  },
+  {
+    "input": {
+      "@": "unknown",
+      "#": "x"
+    },
+    "output": {
+      "#": "x"
+    }
+  },
+  {
+    "input": {
+      "@": "enable_plugin",
+      "#": 2
+    },
+    "output": {
+      "#": 2,
+      "error": "Missing plugin_id"
+    }
+  },
+  {
+    "input": {
+      "@": "reload_plugin",
+      "#": 3,
+      "plugin_id": "missing"
+    },
+    "output": {
+      "#": 3,
+      "error": "Plugin not found"
+    }
+  },
+  {
+    "input": {
+      "@": "get_plugins",
+      "#": 4
+    },
+    "output": {
+      "#": 4
+    }
+  },
+  {
+    "input_raw": "{\"@\":\"ping\",\"#\":10}{\"@\":\"ping\",\"#\":11}{\"@\":",
+    "output_raw": "{\"#\": 10, \"pong\": true}{\"#\": 11, \"pong\": true}",
+    "remaining": "{\"@\":"
+  }
+]

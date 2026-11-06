@@ -1,0 +1,26 @@
+[Unit]
+Description=GhostGram Kombat original arcade rooms
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ghostgram-kombat
+Group=ghostgram-kombat
+Environment=KOMBAT_DATA=/var/lib/ghostgram-kombat
+ExecStart=/opt/ghostgram-kombat/server
+Restart=on-failure
+RestartSec=3
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/ghostgram-kombat
+LimitNOFILE=2048
+MemoryMax=768M
+TasksMax=128
+
+[Install]
+WantedBy=multi-user.target

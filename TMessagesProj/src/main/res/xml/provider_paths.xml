@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <cache-path name="ghost_cached_media" path="."/>
+    <external-path name="media" path="."/>
+    <files-path name="logs" path="/logs/"/>
+    <files-path name="cache" path="/cache/"/>
+    <files-path name="verified_updates" path="updates/"/>
+    <root-path name="external_files" path="/storage/" />
+</paths>

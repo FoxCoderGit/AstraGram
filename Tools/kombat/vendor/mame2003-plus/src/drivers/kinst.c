@@ -1,0 +1,933 @@
+/***************************************************************************
+
+	Killer Instinct hardware
+
+	driver by Aaron Giles and Bryan McPhail
+
+	Games supported:
+		* Killer Instinct
+		* Killer Instinct 2
+
+	Known bugs:
+		* several tests hang because of our hacking screen flipping code
+
+***************************************************************************/
+
+#include "driver.h"
+#include "cpu/mips/mips3.h"
+#include "cpu/adsp2100/adsp2100.h"
+#include "machine/idectrl.h"
+#include "machine/midwayic.h"
+#include "sndhrdw/dcs.h"
+#include "kinst.h"
+#include "state.h"
+
+
+/* constants */
+#define MASTER_CLOCK	50000000
+
+
+/* local variables */
+static data32_t *rombase, *rambase1, *rambase2;
+static data32_t *kinst_control;
+static data32_t *kinst_speedup;
+
+static const UINT8 *control_map;
+
+/* the end of the IRQ 0 pulse, with its time left for the save states */
+static void *irq0_timer;
+static double irq0_timer_left;
+
+
+
+/*************************************
+ *
+ *	Machine init
+ *
+ *************************************/
+
+static void irq0_stop(int param);
+
+static void kinst_presave(void)
+{
+	irq0_timer_left = timer_timeleft(irq0_timer);
+}
+
+
+/* after a load: the displayed buffer, from the VRAM control register, and
+   the end of the IRQ 0 pulse where it was. (A wait of the speedup is not
+   saved: after a load the CPU runs the delay loop again, and waits again.) */
+static void kinst_postload(void)
+{
+	kinst_set_video_base(&rambase1[((kinst_control[0] & 4) ? 0x58000 : 0x30000) / 4]);
+	timer_adjust(irq0_timer, (irq0_timer_left < TIME_NEVER / 2) ? irq0_timer_left : TIME_NEVER, 0, 0);
+}
+
+
+static void kinst_register_state(void)
+{
+	irq0_timer = timer_alloc(irq0_stop);
+
+	/* the control registers ($80-$ff) are not RAM of the memory map */
+	state_save_register_UINT32("kinst", 0, "control", kinst_control, 0x80 / 4);
+	state_save_register_double("kinst", 0, "irq0_timer_left", &irq0_timer_left, 1);
+	state_save_register_func_presave(kinst_presave);
+	state_save_register_func_postload(kinst_postload);
+}
+
+
+static MACHINE_INIT( kinst )
+{
+	cpu_setbank(1, rambase1 + 0x1000/4);
+	cpu_setbank(2, rombase);
+	cpu_setbank(3, rambase1);
+	cpu_setbank(4, rambase2 + 0x90000/4);
+
+	ide_controller_reset(0);
+
+	/* set a safe base location for video */
+	kinst_set_video_base(&rambase1[0x30000/4]);
+}
+
+
+
+/*************************************
+ *
+ *	Interrupt handling
+ *
+ *************************************/
+
+static void irq0_stop(int param)
+{
+	cpu_set_irq_line(0, 0, CLEAR_LINE);
+}
+
+
+static INTERRUPT_GEN( irq0_start )
+{
+	cpu_set_irq_line(0, 0, ASSERT_LINE);
+	timer_adjust(irq0_timer, TIME_IN_USEC(50), 0, 0);
+}
+
+
+static void ide_interrupt(int state)
+{
+	cpu_set_irq_line(0, 1, state);
+}
+
+
+static struct ide_interface ide_intf =
+{
+	ide_interrupt
+};
+
+
+
+/*************************************
+ *
+ *	IDE controller access
+ *
+ *************************************/
+
+static READ32_HANDLER( ide_controller_r )
+{
+	return midway_ide_asic_r(offset / 2, mem_mask);
+}
+
+
+static WRITE32_HANDLER( ide_controller_w )
+{
+	midway_ide_asic_w(offset / 2, data, mem_mask);
+}
+
+
+static READ32_HANDLER( ide_controller_extra_r )
+{
+	return ide_controller32_0_r(0x3f6/4, 0xff00ffff) >> 16;
+}
+
+
+static WRITE32_HANDLER( ide_controller_extra_w )
+{
+	ide_controller32_0_w(0x3f6/4, data << 16, 0xff00ffff);
+}
+
+
+
+/*************************************
+ *
+ *	Control handling
+ *
+ *************************************/
+
+static READ32_HANDLER( kinst_control_r )
+{
+	data32_t result;
+	UINT32 temp;
+
+	offset = control_map[offset / 2];
+	result = kinst_control[offset];
+
+	switch (offset)
+	{
+		case 2:		/* $90 -- sound return */
+			result = 0xffff0000 | readinputport(offset);
+			temp = dcs_control_r();
+			result &= ~0x0002;
+			if (temp & 0x800)
+				result |= 0x0002;
+			break;
+
+		case 0:		/* $80 */
+		case 1:		/* $88 */
+		case 3:		/* $98 */
+			result = 0xffff0000 | readinputport(offset);
+			break;
+
+		case 4:		/* $a0 */
+			result = 0xffff0000 | readinputport(offset);
+			if (activecpu_get_pc() == 0x802d428)
+				cpu_spinuntil_int();
+			break;
+	}
+
+	return result;
+}
+
+
+static WRITE32_HANDLER( kinst_control_w )
+{
+	data32_t olddata;
+
+	offset = control_map[offset / 2];
+	olddata = kinst_control[offset];
+	COMBINE_DATA(&kinst_control[offset]);
+
+	switch (offset)
+	{
+		case 0:		/* $80 - VRAM control: bit 2 selects the displayed buffer (current MAME) */
+			kinst_set_video_base(&rambase1[((kinst_control[offset] & 4) ? 0x58000 : 0x30000) / 4]);
+			break;
+
+		case 1: 	/* $88 - sound reset */
+			dcs_reset_w(data & 0x01);
+			break;
+
+		case 2:		/* $90 - sound control */
+			if (!(olddata & 0x02) && (kinst_control[offset] & 0x02))
+				dcs_data_w(kinst_control[3]);
+			break;
+
+		case 3:		/* $98 - sound data */
+			break;
+	}
+}
+
+
+
+/*************************************
+ *
+ *	Speedups
+ *
+ *************************************/
+
+static void end_spin(int param)
+{
+	cpu_triggerint(0);
+}
+
+
+/*
+	Speedups. Every version has the same two waiting loops, at different addresses.
+
+	1) A delay on the CP0 Count register:
+		v1 = [delay]
+	loop:	k0 = Count; k1 = [start]; k0 -= k1; if (k0 < v1) goto loop
+	When the loop reads [start] we skip the remaining wait.
+	The PC is the instruction after the read.
+
+	2) The waits for an interrupt, polling the CP0 Cause register, for example VBLANK:
+	loop:	v0 = Cause; if (!(v0 & 0x400)) goto loop
+	The MIPS3 core recognises these loops and skips their passes exactly
+	(mips3_set_cause_poll_skip), counters included.
+
+	On top of that the MIPS3 core reads and writes main RAM directly (fast RAM).
+	The addresses come from each version's code, as loaded from the hard disk.
+*/
+struct kinst_speedup_info
+{
+	const char *	name;
+	offs_t			pc;
+	offs_t			address;
+};
+
+static const struct kinst_speedup_info kinst_speedups[] =
+{
+	{ "kinst",    0x88029f98, 0x8808f5d4 },	/* v1.5d */
+	{ "kinst14",  0x88029890, 0x8808f5bc },	/* v1.4 */
+	{ "kinst13",  0x88029880, 0x8808f5bc },	/* v1.3 */
+	{ "kinstp",   0x88029010, 0x8808f5bc },	/* proto v4.7 */
+	{ "kinst2",   0x8802c2d0, 0x887ff544 },	/* v1.4 */
+	{ "kinst213", 0x8802c2d0, 0x887ff544 },	/* v1.3 */
+	{ "kinst211", 0x8802bef4, 0x887ff544 },	/* v1.1 */
+	{ "kinst210", 0x8802bb80, 0x887ff544 },	/* v1.0 */
+	{ NULL }
+};
+
+static offs_t kinst_speedup_pc;
+
+
+static READ32_HANDLER( kinst_speedup_r )
+{
+	if (activecpu_get_pc() == kinst_speedup_pc)
+	{
+		UINT32 r3 = activecpu_get_reg(MIPS3_R3);
+		UINT32 r26 = activecpu_get_reg(MIPS3_R26) - *kinst_speedup;
+		if (r26 < r3)
+		{
+			timer_set(TIME_IN_CYCLES((r3 - r26) * 2, 0), 0, end_spin);
+			cpu_spinuntil_int();
+		}
+	}
+	return *kinst_speedup;
+}
+
+
+#define KINST_ROM_WAIT		128		/* cycles per data read from the boot EPROM */
+
+static void kinst_install_speedup(void)
+{
+	const struct kinst_speedup_info *info;
+
+	for (info = kinst_speedups; info->name; info++)
+		if (!strcmp(Machine->gamedrv->name, info->name))
+			break;
+	if (!info->name)
+		return;
+
+	/* the Count delay loop */
+	kinst_speedup_pc = info->pc;
+	kinst_speedup = install_mem_read32_handler(0, info->address, info->address + 3, kinst_speedup_r);
+
+	/* the loops waiting for an interrupt in Cause (VBLANK, IRQ 0, and the others) are
+	   skipped exactly by the MIPS3 core; the input port at $a0 can be read inside them */
+	mips3_set_cause_poll_skip(1);
+	mips3_add_poll_read(0xb00000a0, 0xb00000a3);
+
+	/* main RAM through a direct pointer, except the word watched by the delay speedup; */
+	/* (the regions are tried in order, so the busiest come first) */
+	mips3_add_fastram(0x80000000, 0x8007ffff, 0, rambase1);
+	mips3_add_fastram(0x88000000, info->address - 1, 0, rambase2);
+	mips3_add_fastram(info->address + 4, 0x887fffff, 0, (UINT8 *)rambase2 + (info->address + 4 - 0x88000000));
+	mips3_add_fastram(0xa0000000, 0xa007ffff, 0, rambase1);
+	/* the low RAM windows (banks 4 and 1): the drawing code reads its tables there */
+	mips3_add_fastram(0x00000000, 0x00000fff, 0, rambase2 + 0x90000/4);
+	mips3_add_fastram(0x00001000, 0x0007ffff, 0, rambase1 + 0x1000/4);
+	/* the boot ROM, read only: the game calls its routines (and they can be recompiled) */
+	/* data reads from the boot EPROM have wait states (128 cycles, as FBNeo): */
+	/* the boot (blue screen) then takes about 7 seconds instead of 1, and the */
+	/* DCS has time to start the attract mode music, which was missing */
+	mips3_add_fastram_wait(0x9fc00000, 0x9fc7ffff, 1, rombase, KINST_ROM_WAIT);
+	mips3_add_fastram_wait(0xbfc00000, 0xbfc7ffff, 1, rombase, KINST_ROM_WAIT);
+
+	/* DCS sound: the boot code's NOP delay loops skipped exactly, and the */
+	/* banked sound ROM read through a pointer */
+	adsp2100_set_nop_loop_skip(1);
+	dcs_fast_rombank_init();
+
+	/* recompiler (core option; only on the hosts that support it) */
+	if (options.mips_dynarec)
+		mips3_set_jit(1);
+	if (options.adsp_dynarec)
+	{
+		adsp2100_set_jit(1);
+		/* the banked sound ROM (dcs_rombank_data_r): reads with no side effects */
+		adsp2100_jit_pure_read(0x2000, 0x2fff);
+	}
+}
+
+
+
+/*************************************
+ *
+ *	Main CPU memory handlers
+ *
+ *************************************/
+
+static MEMORY_READ32_START( main_readmem )
+	{ 0x00000000, 0x00000fff, MRA32_BANK4 },
+	{ 0x00001000, 0x0007ffff, MRA32_BANK1 },	/* -> rambase1 + 0x1000 */
+	{ 0x80000000, 0x8007ffff, MRA32_RAM },
+	{ 0x88000000, 0x887fffff, MRA32_RAM },
+	{ 0x9fc00000, 0x9fc7ffff, MRA32_BANK2 },	/* -> rombase */
+	{ 0xa0000000, 0xa007ffff, MRA32_BANK3 },	/* -> rambase1 */
+	{ 0xb0000080, 0xb00000ff, kinst_control_r },
+	{ 0xb0000100, 0xb000013f, ide_controller_r },
+	{ 0xb0000170, 0xb0000173, ide_controller_extra_r },
+	{ 0xbfc00000, 0xbfc7ffff, MRA32_ROM },
+MEMORY_END
+
+
+static MEMORY_WRITE32_START( main_writemem )
+	{ 0x00000000, 0x00000fff, MWA32_BANK4 },
+	{ 0x00001000, 0x0007ffff, MWA32_BANK1 },
+	{ 0x80000000, 0x8007ffff, MWA32_RAM, &rambase1 },
+	{ 0x88000000, 0x887fffff, MWA32_RAM, &rambase2 },
+	{ 0x9fc00000, 0x9fc7ffff, MWA32_ROM },
+	{ 0xa0000000, 0xa007ffff, MWA32_BANK3 },
+	{ 0xb0000080, 0xb00000ff, kinst_control_w, &kinst_control },
+	{ 0xb0000100, 0xb000013f, ide_controller_w },
+	{ 0xb0000170, 0xb0000173, ide_controller_extra_w },
+	{ 0xbfc00000, 0xbfc7ffff, MWA32_ROM, &rombase },
+MEMORY_END
+
+
+
+
+/*************************************
+ *
+ *	Port definitions
+ *
+ *************************************/
+
+INPUT_PORTS_START( kinst )
+	PORT_START
+	PORT_BIT( 0x0001, IP_ACTIVE_LOW, IPT_BUTTON1 | IPF_PLAYER1 )
+	PORT_BIT( 0x0002, IP_ACTIVE_LOW, IPT_BUTTON2 | IPF_PLAYER1 )
+	PORT_BIT( 0x0004, IP_ACTIVE_LOW, IPT_BUTTON3 | IPF_PLAYER1 )
+	PORT_BIT( 0x0008, IP_ACTIVE_LOW, IPT_BUTTON4 | IPF_PLAYER1 )
+	PORT_BIT( 0x0010, IP_ACTIVE_LOW, IPT_BUTTON5 | IPF_PLAYER1 )
+	PORT_BIT( 0x0020, IP_ACTIVE_LOW, IPT_BUTTON6 | IPF_PLAYER1 )
+	PORT_BIT( 0x0040, IP_ACTIVE_LOW, IPT_JOYSTICK_UP | IPF_PLAYER1 )
+	PORT_BIT( 0x0080, IP_ACTIVE_LOW, IPT_JOYSTICK_DOWN | IPF_PLAYER1 )
+	PORT_BIT( 0x0100, IP_ACTIVE_LOW, IPT_JOYSTICK_LEFT | IPF_PLAYER1 )
+	PORT_BIT( 0x0200, IP_ACTIVE_LOW, IPT_JOYSTICK_RIGHT | IPF_PLAYER1 )
+	PORT_BIT( 0x0400, IP_ACTIVE_LOW, IPT_START1 )
+	PORT_BIT( 0x0800, IP_ACTIVE_LOW, IPT_COIN1 )
+	PORT_BITX(0x1000, IP_ACTIVE_LOW, IPT_SERVICE, DEF_STR( Service_Mode ), KEYCODE_F2, IP_JOY_NONE )
+	PORT_BIT( 0x2000, IP_ACTIVE_LOW, IPT_COIN3 )
+	PORT_BIT( 0x4000, IP_ACTIVE_LOW, IPT_COIN4 )
+	PORT_BIT( 0x8000, IP_ACTIVE_LOW, IPT_SPECIAL )	/* door */
+
+	PORT_START
+	PORT_BIT( 0x0001, IP_ACTIVE_LOW, IPT_BUTTON1 | IPF_PLAYER2 )
+	PORT_BIT( 0x0002, IP_ACTIVE_LOW, IPT_BUTTON2 | IPF_PLAYER2 )
+	PORT_BIT( 0x0004, IP_ACTIVE_LOW, IPT_BUTTON3 | IPF_PLAYER2 )
+	PORT_BIT( 0x0008, IP_ACTIVE_LOW, IPT_BUTTON4 | IPF_PLAYER2 )
+	PORT_BIT( 0x0010, IP_ACTIVE_LOW, IPT_BUTTON5 | IPF_PLAYER2 )
+	PORT_BIT( 0x0020, IP_ACTIVE_LOW, IPT_BUTTON6 | IPF_PLAYER2 )
+	PORT_BIT( 0x0040, IP_ACTIVE_LOW, IPT_JOYSTICK_UP | IPF_PLAYER2 )
+	PORT_BIT( 0x0080, IP_ACTIVE_LOW, IPT_JOYSTICK_DOWN | IPF_PLAYER2 )
+	PORT_BIT( 0x0100, IP_ACTIVE_LOW, IPT_JOYSTICK_LEFT | IPF_PLAYER2 )
+	PORT_BIT( 0x0200, IP_ACTIVE_LOW, IPT_JOYSTICK_RIGHT | IPF_PLAYER2 )
+	PORT_BIT( 0x0400, IP_ACTIVE_LOW, IPT_START2 )
+	PORT_BIT( 0x0800, IP_ACTIVE_LOW, IPT_COIN2 )
+	PORT_BIT( 0x1000, IP_ACTIVE_LOW, IPT_TILT )
+	PORT_BIT( 0x2000, IP_ACTIVE_LOW, IPT_SERVICE1 )
+	PORT_BIT( 0x4000, IP_ACTIVE_LOW, IPT_SPECIAL )	/* bill */
+	PORT_BIT( 0x8000, IP_ACTIVE_LOW, IPT_UNKNOWN )	/* coin door */
+
+	PORT_START
+	PORT_BIT( 0x0003, IP_ACTIVE_LOW, IPT_UNKNOWN )
+	PORT_BITX(0x0004, IP_ACTIVE_LOW, 0, "Volume Up", KEYCODE_EQUALS, IP_JOY_NONE )
+	PORT_BITX(0x0008, IP_ACTIVE_LOW, 0, "Volume Down", KEYCODE_MINUS, IP_JOY_NONE )
+	PORT_BIT( 0xfff0, IP_ACTIVE_LOW, IPT_UNKNOWN )
+
+	PORT_START
+	PORT_BIT( 0xffff, IP_ACTIVE_LOW, IPT_UNUSED )	/* verify */
+
+	PORT_START	/* DSW (dip switches as in current MAME) */
+	PORT_DIPNAME( 0x0003, 0x0003, "Blood Level" )
+	PORT_DIPSETTING(      0x0003, "High")
+	PORT_DIPSETTING(      0x0002, "Medium")
+	PORT_DIPSETTING(      0x0001, "Low")
+	PORT_DIPSETTING(      0x0000, "None")
+	PORT_DIPNAME( 0x0004, 0x0004, DEF_STR( Demo_Sounds ))
+	PORT_DIPSETTING(      0x0000, DEF_STR( Off ))
+	PORT_DIPSETTING(      0x0004, DEF_STR( On ))
+	PORT_DIPNAME( 0x0008, 0x0008, "Finishing Moves" )
+	PORT_DIPSETTING(      0x0000, DEF_STR( Off ))
+	PORT_DIPSETTING(      0x0008, DEF_STR( On ))
+	PORT_DIPNAME( 0x0010, 0x0010, "Display Warning" )
+	PORT_DIPSETTING(      0x0000, DEF_STR( Off ))
+	PORT_DIPSETTING(      0x0010, DEF_STR( On ))
+	PORT_DIPNAME( 0x0020, 0x0020, "Blood" )
+	PORT_DIPSETTING(      0x0020, "Red" )
+	PORT_DIPSETTING(      0x0000, "White" )
+	PORT_DIPNAME( 0x0040, 0x0040, DEF_STR( Unused ))
+	PORT_DIPSETTING(      0x0040, DEF_STR( Off ))
+	PORT_DIPSETTING(      0x0000, DEF_STR( On ))
+	PORT_DIPNAME( 0x0080, 0x0080, DEF_STR( Unused ))
+	PORT_DIPSETTING(      0x0080, DEF_STR( Off ))
+	PORT_DIPSETTING(      0x0000, DEF_STR( On ))
+	PORT_DIPNAME( 0x0100, 0x0100, "Coinage Source" )
+	PORT_DIPSETTING(      0x0100, "Dipswitch" )
+	PORT_DIPSETTING(      0x0000, "Disk" )
+	PORT_DIPNAME( 0x3e00, 0x3e00, DEF_STR( Coinage ))
+	PORT_DIPSETTING(      0x3e00, "USA-1" )
+	PORT_DIPSETTING(      0x3c00, "USA-2" )
+	PORT_DIPSETTING(      0x3a00, "USA-3" )
+	PORT_DIPSETTING(      0x3800, "USA-4" )
+	PORT_DIPSETTING(      0x3400, "USA-9" )
+	PORT_DIPSETTING(      0x3200, "USA-10" )
+	PORT_DIPSETTING(      0x3600, "USA-ECA" )
+	PORT_DIPSETTING(      0x3000, "USA-Free Play" )
+	PORT_DIPSETTING(      0x2e00, "German-1" )
+	PORT_DIPSETTING(      0x2c00, "German-2" )
+	PORT_DIPSETTING(      0x2a00, "German-3" )
+	PORT_DIPSETTING(      0x2800, "German-4" )
+	PORT_DIPSETTING(      0x2600, "German-ECA" )
+	PORT_DIPSETTING(      0x2000, "German-Free Play" )
+	PORT_DIPSETTING(      0x1e00, "French-1" )
+	PORT_DIPSETTING(      0x1c00, "French-2" )
+	PORT_DIPSETTING(      0x1a00, "French-3" )
+	PORT_DIPSETTING(      0x1800, "French-4" )
+	PORT_DIPSETTING(      0x1600, "French-ECA" )
+	PORT_DIPSETTING(      0x1000, "French-Free Play" )
+	PORT_DIPNAME( 0x4000, 0x4000, "Coin Counters" )
+	PORT_DIPSETTING(      0x4000, "1" )
+	PORT_DIPSETTING(      0x0000, "2" )
+	PORT_DIPNAME( 0x8000, 0x8000, "Test Switch" )
+	PORT_DIPSETTING(      0x8000, DEF_STR( Off ))
+	PORT_DIPSETTING(      0x0000, DEF_STR( On ))
+INPUT_PORTS_END
+
+
+INPUT_PORTS_START( kinst2 )
+	PORT_START
+	PORT_BIT( 0x0001, IP_ACTIVE_LOW, IPT_BUTTON1 | IPF_PLAYER1 )
+	PORT_BIT( 0x0002, IP_ACTIVE_LOW, IPT_BUTTON2 | IPF_PLAYER1 )
+	PORT_BIT( 0x0004, IP_ACTIVE_LOW, IPT_BUTTON3 | IPF_PLAYER1 )
+	PORT_BIT( 0x0008, IP_ACTIVE_LOW, IPT_BUTTON4 | IPF_PLAYER1 )
+	PORT_BIT( 0x0010, IP_ACTIVE_LOW, IPT_BUTTON5 | IPF_PLAYER1 )
+	PORT_BIT( 0x0020, IP_ACTIVE_LOW, IPT_BUTTON6 | IPF_PLAYER1 )
+	PORT_BIT( 0x0040, IP_ACTIVE_LOW, IPT_JOYSTICK_UP | IPF_PLAYER1 )
+	PORT_BIT( 0x0080, IP_ACTIVE_LOW, IPT_JOYSTICK_DOWN | IPF_PLAYER1 )
+	PORT_BIT( 0x0100, IP_ACTIVE_LOW, IPT_JOYSTICK_LEFT | IPF_PLAYER1 )
+	PORT_BIT( 0x0200, IP_ACTIVE_LOW, IPT_JOYSTICK_RIGHT | IPF_PLAYER1 )
+	PORT_BIT( 0x0400, IP_ACTIVE_LOW, IPT_START1 )
+	PORT_BIT( 0x0800, IP_ACTIVE_LOW, IPT_COIN1 )
+	PORT_BITX(0x1000, IP_ACTIVE_LOW, IPT_SERVICE, DEF_STR( Service_Mode ), KEYCODE_F2, IP_JOY_NONE )
+	PORT_BIT( 0x2000, IP_ACTIVE_LOW, IPT_COIN3 )
+	PORT_BIT( 0x4000, IP_ACTIVE_LOW, IPT_COIN4 )
+	PORT_BIT( 0x8000, IP_ACTIVE_LOW, IPT_SPECIAL )	/* door */
+
+	PORT_START
+	PORT_BIT( 0x0001, IP_ACTIVE_LOW, IPT_BUTTON1 | IPF_PLAYER2 )
+	PORT_BIT( 0x0002, IP_ACTIVE_LOW, IPT_BUTTON2 | IPF_PLAYER2 )
+	PORT_BIT( 0x0004, IP_ACTIVE_LOW, IPT_BUTTON3 | IPF_PLAYER2 )
+	PORT_BIT( 0x0008, IP_ACTIVE_LOW, IPT_BUTTON4 | IPF_PLAYER2 )
+	PORT_BIT( 0x0010, IP_ACTIVE_LOW, IPT_BUTTON5 | IPF_PLAYER2 )
+	PORT_BIT( 0x0020, IP_ACTIVE_LOW, IPT_BUTTON6 | IPF_PLAYER2 )
+	PORT_BIT( 0x0040, IP_ACTIVE_LOW, IPT_JOYSTICK_UP | IPF_PLAYER2 )
+	PORT_BIT( 0x0080, IP_ACTIVE_LOW, IPT_JOYSTICK_DOWN | IPF_PLAYER2 )
+	PORT_BIT( 0x0100, IP_ACTIVE_LOW, IPT_JOYSTICK_LEFT | IPF_PLAYER2 )
+	PORT_BIT( 0x0200, IP_ACTIVE_LOW, IPT_JOYSTICK_RIGHT | IPF_PLAYER2 )
+	PORT_BIT( 0x0400, IP_ACTIVE_LOW, IPT_START2 )
+	PORT_BIT( 0x0800, IP_ACTIVE_LOW, IPT_COIN2 )
+	PORT_BIT( 0x1000, IP_ACTIVE_LOW, IPT_TILT )
+	PORT_BIT( 0x2000, IP_ACTIVE_LOW, IPT_SERVICE1 )
+	PORT_BIT( 0x4000, IP_ACTIVE_LOW, IPT_SPECIAL )	/* bill */
+	PORT_BIT( 0x8000, IP_ACTIVE_LOW, IPT_UNKNOWN )	/* coin door */
+
+	PORT_START
+	PORT_BIT( 0x0003, IP_ACTIVE_LOW, IPT_UNKNOWN )
+	PORT_BITX(0x0004, IP_ACTIVE_LOW, 0, "Volume Up", KEYCODE_EQUALS, IP_JOY_NONE )
+	PORT_BITX(0x0008, IP_ACTIVE_LOW, 0, "Volume Down", KEYCODE_MINUS, IP_JOY_NONE )
+	PORT_BIT( 0xfff0, IP_ACTIVE_LOW, IPT_UNKNOWN )
+
+	PORT_START
+	PORT_BIT( 0xffff, IP_ACTIVE_LOW, IPT_UNUSED )	/* verify */
+
+	PORT_START	/* DSW (dip switches as in current MAME) */
+	PORT_DIPNAME( 0x0003, 0x0003, "Blood Level" )
+	PORT_DIPSETTING(      0x0003, "High")
+	PORT_DIPSETTING(      0x0002, "Medium")
+	PORT_DIPSETTING(      0x0001, "Low")
+	PORT_DIPSETTING(      0x0000, "None")
+	PORT_DIPNAME( 0x0004, 0x0004, DEF_STR( Demo_Sounds ))
+	PORT_DIPSETTING(      0x0000, DEF_STR( Off ))
+	PORT_DIPSETTING(      0x0004, DEF_STR( On ))
+	PORT_DIPNAME( 0x0008, 0x0008, "Finishing Moves" )
+	PORT_DIPSETTING(      0x0000, DEF_STR( Off ))
+	PORT_DIPSETTING(      0x0008, DEF_STR( On ))
+	PORT_DIPNAME( 0x0010, 0x0010, "Display Warning" )
+	PORT_DIPSETTING(      0x0000, DEF_STR( Off ))
+	PORT_DIPSETTING(      0x0010, DEF_STR( On ))
+	PORT_DIPNAME( 0x0020, 0x0020, DEF_STR( Unused ))
+	PORT_DIPSETTING(      0x0020, DEF_STR( Off ))
+	PORT_DIPSETTING(      0x0000, DEF_STR( On ))
+	PORT_DIPNAME( 0x0040, 0x0040, DEF_STR( Unused ))
+	PORT_DIPSETTING(      0x0040, DEF_STR( Off ))
+	PORT_DIPSETTING(      0x0000, DEF_STR( On ))
+	PORT_DIPNAME( 0x0080, 0x0080, DEF_STR( Unused ))
+	PORT_DIPSETTING(      0x0080, DEF_STR( Off ))
+	PORT_DIPSETTING(      0x0000, DEF_STR( On ))
+	PORT_DIPNAME( 0x0100, 0x0100, "Coinage Source" )
+	PORT_DIPSETTING(      0x0100, "Dipswitch" )
+	PORT_DIPSETTING(      0x0000, "Disk" )
+	PORT_DIPNAME( 0x3e00, 0x3e00, DEF_STR( Coinage ))
+	PORT_DIPSETTING(      0x3e00, "USA-1" )
+	PORT_DIPSETTING(      0x3c00, "USA-2" )
+	PORT_DIPSETTING(      0x3a00, "USA-3" )
+	PORT_DIPSETTING(      0x3800, "USA-4" )
+	PORT_DIPSETTING(      0x3400, "USA-9" )
+	PORT_DIPSETTING(      0x3200, "USA-10" )
+	PORT_DIPSETTING(      0x3600, "USA-ECA" )
+	PORT_DIPSETTING(      0x3000, "USA-Free Play" )
+	PORT_DIPSETTING(      0x2e00, "German-1" )
+	PORT_DIPSETTING(      0x2c00, "German-2" )
+	PORT_DIPSETTING(      0x2a00, "German-3" )
+	PORT_DIPSETTING(      0x2800, "German-4" )
+	PORT_DIPSETTING(      0x2600, "German-ECA" )
+	PORT_DIPSETTING(      0x2000, "German-Free Play" )
+	PORT_DIPSETTING(      0x1e00, "French-1" )
+	PORT_DIPSETTING(      0x1c00, "French-2" )
+	PORT_DIPSETTING(      0x1a00, "French-3" )
+	PORT_DIPSETTING(      0x1800, "French-4" )
+	PORT_DIPSETTING(      0x1600, "French-ECA" )
+	PORT_DIPSETTING(      0x1000, "French-Free Play" )
+	PORT_DIPNAME( 0x4000, 0x4000, "Coin Counters" )
+	PORT_DIPSETTING(      0x4000, "1" )
+	PORT_DIPSETTING(      0x0000, "2" )
+	PORT_DIPNAME( 0x8000, 0x8000, "Test Switch" )
+	PORT_DIPSETTING(      0x8000, DEF_STR( Off ))
+	PORT_DIPSETTING(      0x0000, DEF_STR( On ))
+INPUT_PORTS_END
+
+
+
+/*************************************
+ *
+ *	Machine driver
+ *
+ *************************************/
+
+static struct mips3_config config =
+{
+	16384,				/* code cache size */
+	16384				/* data cache size */
+};
+
+
+MACHINE_DRIVER_START( kinst )
+
+	/* basic machine hardware */
+	MDRV_CPU_ADD(R4600LE, MASTER_CLOCK*2)
+	MDRV_CPU_CONFIG(config)
+	MDRV_CPU_MEMORY(main_readmem,main_writemem)
+	MDRV_CPU_VBLANK_INT(irq0_start,1)
+
+	MDRV_FRAMES_PER_SECOND(MASTER_CLOCK / 8.0 / (406 * 261))	/* 58.98 Hz, as in current MAME */
+	MDRV_VBLANK_DURATION(DEFAULT_REAL_60HZ_VBLANK_DURATION)
+
+	MDRV_MACHINE_INIT(kinst)
+
+	/* video hardware */
+	MDRV_VIDEO_ATTRIBUTES(VIDEO_TYPE_RASTER | VIDEO_RGB_DIRECT | VIDEO_UPDATE_BEFORE_VBLANK)
+	MDRV_SCREEN_SIZE(320, 240)
+	MDRV_VISIBLE_AREA(0, 319, 0, 239)
+	MDRV_PALETTE_LENGTH(32768)
+
+	MDRV_PALETTE_INIT(kinst)
+	MDRV_VIDEO_START(kinst)
+	MDRV_VIDEO_UPDATE(kinst)
+
+	/* sound hardware */
+	MDRV_IMPORT_FROM(dcs_audio)
+MACHINE_DRIVER_END
+
+
+
+/*************************************
+ *
+ *	ROM definition(s)
+ *
+ *************************************/
+
+ROM_START( kinst )
+	ROM_REGION( 0x80000, REGION_CPU1, 0 )		/* dummy region for R4600 */
+
+	ROM_REGION32_LE( 0x80000, REGION_USER1, 0 )	/* 512k for R4600 code */
+	ROM_LOAD( "ki-l15d.u98", 0x00000, 0x80000, CRC(7b65ca3d) SHA1(607394d4ba1713f38c2cb5159303cace9cde991e) )
+
+	ROM_REGION( ADSP2100_SIZE + 0x800000, REGION_CPU2, 0 )	/* ADSP-2105 data */
+	ROM_LOAD( "u10-l1", ADSP2100_SIZE + 0x000000, 0x80000, CRC(b6cc155f) SHA1(810d455df8f385d76143e9d7d048f2b555ff8bf0) )
+	ROM_LOAD( "u11-l1", ADSP2100_SIZE + 0x100000, 0x80000, CRC(0b5e05df) SHA1(0595909cb667c38ac7c8c7bd0646b28899e27777) )
+	ROM_LOAD( "u12-l1", ADSP2100_SIZE + 0x200000, 0x80000, CRC(d05ce6ad) SHA1(7a8ee405c118fd176b66353fa7bfab888cc63cd2) )
+	ROM_LOAD( "u13-l1", ADSP2100_SIZE + 0x300000, 0x80000, CRC(7d0954ea) SHA1(ea4d1f153eb284f1bcfc5295fbce316bba6083f4) )
+	ROM_LOAD( "u33-l1", ADSP2100_SIZE + 0x400000, 0x80000, CRC(8bbe4f0c) SHA1(b22e365bc8d58a80eaac226be14b4bb8d9a04844) )
+	ROM_LOAD( "u34-l1", ADSP2100_SIZE + 0x500000, 0x80000, CRC(b2e73603) SHA1(ee439f5162a2b3379d3f802328017bb3c68547d2) )
+	ROM_LOAD( "u35-l1", ADSP2100_SIZE + 0x600000, 0x80000, CRC(0aaef4fc) SHA1(48c4c954ac9db648f28ad64f9845e19ec432eec3) )
+	ROM_LOAD( "u36-l1", ADSP2100_SIZE + 0x700000, 0x80000, CRC(0577bb60) SHA1(cc78070cc41701e9a91fde5cfbdc7e1e83354854) )
+
+	ROM_REGION( 0x600000, REGION_SOUND1, 0 )
+
+	DISK_REGION( REGION_DISKS )
+	DISK_IMAGE( "kinst", 0, SHA1(81d833236e994528d1482979261401b198d1ca53) )	/* current MAME CHD (v5); also accepts the older v3 one */
+ROM_END
+
+
+ROM_START( kinst14 )
+	ROM_REGION( 0x80000, REGION_CPU1, 0 )		/* dummy region for R4600 */
+
+	ROM_REGION32_LE( 0x80000, REGION_USER1, 0 )	/* 512k for R4600 code */
+	ROM_LOAD( "ki-l14.u98", 0x00000, 0x80000, CRC(afedb75f) SHA1(07254f20707377f7195e64675eb6458e663c1a9a) )
+
+	ROM_REGION( ADSP2100_SIZE + 0x800000, REGION_CPU2, 0 )	/* ADSP-2105 data */
+	ROM_LOAD( "u10-l1", ADSP2100_SIZE + 0x000000, 0x80000, CRC(b6cc155f) SHA1(810d455df8f385d76143e9d7d048f2b555ff8bf0) )
+	ROM_LOAD( "u11-l1", ADSP2100_SIZE + 0x100000, 0x80000, CRC(0b5e05df) SHA1(0595909cb667c38ac7c8c7bd0646b28899e27777) )
+	ROM_LOAD( "u12-l1", ADSP2100_SIZE + 0x200000, 0x80000, CRC(d05ce6ad) SHA1(7a8ee405c118fd176b66353fa7bfab888cc63cd2) )
+	ROM_LOAD( "u13-l1", ADSP2100_SIZE + 0x300000, 0x80000, CRC(7d0954ea) SHA1(ea4d1f153eb284f1bcfc5295fbce316bba6083f4) )
+	ROM_LOAD( "u33-l1", ADSP2100_SIZE + 0x400000, 0x80000, CRC(8bbe4f0c) SHA1(b22e365bc8d58a80eaac226be14b4bb8d9a04844) )
+	ROM_LOAD( "u34-l1", ADSP2100_SIZE + 0x500000, 0x80000, CRC(b2e73603) SHA1(ee439f5162a2b3379d3f802328017bb3c68547d2) )
+	ROM_LOAD( "u35-l1", ADSP2100_SIZE + 0x600000, 0x80000, CRC(0aaef4fc) SHA1(48c4c954ac9db648f28ad64f9845e19ec432eec3) )
+	ROM_LOAD( "u36-l1", ADSP2100_SIZE + 0x700000, 0x80000, CRC(0577bb60) SHA1(cc78070cc41701e9a91fde5cfbdc7e1e83354854) )
+
+	ROM_REGION( 0x600000, REGION_SOUND1, 0 )
+
+	DISK_REGION( REGION_DISKS )
+	DISK_IMAGE( "kinst", 0, SHA1(81d833236e994528d1482979261401b198d1ca53) )	/* current MAME CHD (v5); also accepts the older v3 one */
+ROM_END
+
+
+ROM_START( kinst13 )
+	ROM_REGION( 0x80000, REGION_CPU1, 0 )		/* dummy region for R4600 */
+
+	ROM_REGION32_LE( 0x80000, REGION_USER1, 0 )	/* 512k for R4600 code */
+	ROM_LOAD( "ki-l13.u98", 0x00000, 0x80000, CRC(65f7ea31) SHA1(7f21620a512549db6821a0b4fa53681a767b7974) )
+
+	ROM_REGION( ADSP2100_SIZE + 0x800000, REGION_CPU2, 0 )	/* ADSP-2105 data */
+	ROM_LOAD( "u10-l1", ADSP2100_SIZE + 0x000000, 0x80000, CRC(b6cc155f) SHA1(810d455df8f385d76143e9d7d048f2b555ff8bf0) )
+	ROM_LOAD( "u11-l1", ADSP2100_SIZE + 0x100000, 0x80000, CRC(0b5e05df) SHA1(0595909cb667c38ac7c8c7bd0646b28899e27777) )
+	ROM_LOAD( "u12-l1", ADSP2100_SIZE + 0x200000, 0x80000, CRC(d05ce6ad) SHA1(7a8ee405c118fd176b66353fa7bfab888cc63cd2) )
+	ROM_LOAD( "u13-l1", ADSP2100_SIZE + 0x300000, 0x80000, CRC(7d0954ea) SHA1(ea4d1f153eb284f1bcfc5295fbce316bba6083f4) )
+	ROM_LOAD( "u33-l1", ADSP2100_SIZE + 0x400000, 0x80000, CRC(8bbe4f0c) SHA1(b22e365bc8d58a80eaac226be14b4bb8d9a04844) )
+	ROM_LOAD( "u34-l1", ADSP2100_SIZE + 0x500000, 0x80000, CRC(b2e73603) SHA1(ee439f5162a2b3379d3f802328017bb3c68547d2) )
+	ROM_LOAD( "u35-l1", ADSP2100_SIZE + 0x600000, 0x80000, CRC(0aaef4fc) SHA1(48c4c954ac9db648f28ad64f9845e19ec432eec3) )
+	ROM_LOAD( "u36-l1", ADSP2100_SIZE + 0x700000, 0x80000, CRC(0577bb60) SHA1(cc78070cc41701e9a91fde5cfbdc7e1e83354854) )
+
+	ROM_REGION( 0x600000, REGION_SOUND1, 0 )
+
+	DISK_REGION( REGION_DISKS )
+	DISK_IMAGE( "kinst", 0, SHA1(81d833236e994528d1482979261401b198d1ca53) )	/* current MAME CHD (v5); also accepts the older v3 one */
+ROM_END
+
+
+ROM_START( kinstp )
+	ROM_REGION( 0x80000, REGION_CPU1, 0 )		/* dummy region for R4600 */
+
+	ROM_REGION32_LE( 0x80000, REGION_USER1, 0 )	/* 512k for R4600 code */
+	ROM_LOAD( "ki-p47.u98", 0x00000, 0x80000, CRC(05e67bcb) SHA1(501e69b3026394f69229a6e9866c1037502b86bb) )
+
+	ROM_REGION( ADSP2100_SIZE + 0x800000, REGION_CPU2, 0 )	/* ADSP-2105 data */
+	ROM_LOAD( "u10-l1", ADSP2100_SIZE + 0x000000, 0x80000, CRC(b6cc155f) SHA1(810d455df8f385d76143e9d7d048f2b555ff8bf0) )
+	ROM_LOAD( "u11-l1", ADSP2100_SIZE + 0x100000, 0x80000, CRC(0b5e05df) SHA1(0595909cb667c38ac7c8c7bd0646b28899e27777) )
+	ROM_LOAD( "u12-l1", ADSP2100_SIZE + 0x200000, 0x80000, CRC(d05ce6ad) SHA1(7a8ee405c118fd176b66353fa7bfab888cc63cd2) )
+	ROM_LOAD( "u13-l1", ADSP2100_SIZE + 0x300000, 0x80000, CRC(7d0954ea) SHA1(ea4d1f153eb284f1bcfc5295fbce316bba6083f4) )
+	ROM_LOAD( "u33-l1", ADSP2100_SIZE + 0x400000, 0x80000, CRC(8bbe4f0c) SHA1(b22e365bc8d58a80eaac226be14b4bb8d9a04844) )
+	ROM_LOAD( "u34-l1", ADSP2100_SIZE + 0x500000, 0x80000, CRC(b2e73603) SHA1(ee439f5162a2b3379d3f802328017bb3c68547d2) )
+	ROM_LOAD( "u35-l1", ADSP2100_SIZE + 0x600000, 0x80000, CRC(0aaef4fc) SHA1(48c4c954ac9db648f28ad64f9845e19ec432eec3) )
+	ROM_LOAD( "u36-l1", ADSP2100_SIZE + 0x700000, 0x80000, CRC(0577bb60) SHA1(cc78070cc41701e9a91fde5cfbdc7e1e83354854) )
+
+	ROM_REGION( 0x600000, REGION_SOUND1, 0 )
+
+	DISK_REGION( REGION_DISKS )
+	DISK_IMAGE( "kinst", 0, SHA1(81d833236e994528d1482979261401b198d1ca53) )	/* current MAME CHD (v5); also accepts the older v3 one */
+ROM_END
+
+
+ROM_START( kinst2 )
+	ROM_REGION( 0x80000, REGION_CPU1, 0 )		/* dummy region for R4600 */
+
+	ROM_REGION32_LE( 0x80000, REGION_USER1, 0 )	/* 512k for R4600 code */
+	ROM_LOAD( "ki2-l14.u98", 0x00000, 0x80000, CRC(27d0285e) SHA1(aa7a2a9d72a47dd0ea2ee7b2776b79288060b179) )
+
+	ROM_REGION( ADSP2100_SIZE + 0x800000, REGION_CPU2, 0 )	/* ADSP-2105 data */
+	ROM_LOAD( "ki2_l1.u10", ADSP2100_SIZE + 0x000000, 0x80000, CRC(fdf6ed51) SHA1(acfc9460cd5df01403b7f00b2f68c2a8734ad6d3) )
+	ROM_LOAD( "ki2_l1.u11", ADSP2100_SIZE + 0x100000, 0x80000, CRC(f9e70024) SHA1(fe7fc78f1c60b15f2bbdc4c455f55cdf30f48ed4) )
+	ROM_LOAD( "ki2_l1.u12", ADSP2100_SIZE + 0x200000, 0x80000, CRC(2994c199) SHA1(9997a83432cb720f65b40a8af46f31a5d0d16d8e) )
+	ROM_LOAD( "ki2_l1.u13", ADSP2100_SIZE + 0x300000, 0x80000, CRC(3fe6327b) SHA1(7ff164fc2f079d039921594be92208973d43aa03) )
+	ROM_LOAD( "ki2_l1.u33", ADSP2100_SIZE + 0x400000, 0x80000, CRC(6f4dcdcf) SHA1(0ab6dbfb76e9fa2db072e287864ad1f9d514dd9b) )
+	ROM_LOAD( "ki2_l1.u34", ADSP2100_SIZE + 0x500000, 0x80000, CRC(5db48206) SHA1(48456a7b6592c40bc9c664dcd2ee2cfd91942811) )
+	ROM_LOAD( "ki2_l1.u35", ADSP2100_SIZE + 0x600000, 0x80000, CRC(7245ce69) SHA1(24a3ff009c8a7f5a0bfcb198b8dcb5df365770d3) )
+	ROM_LOAD( "ki2_l1.u36", ADSP2100_SIZE + 0x700000, 0x80000, CRC(8920acbb) SHA1(0fca72c40067034939b984b4bf32972a5a6c26af) )
+
+	ROM_REGION( 0x600000, REGION_SOUND1, 0 )
+
+	DISK_REGION( REGION_DISKS )
+	DISK_IMAGE( "kinst2", 0, SHA1(e7c9291b4648eae0012ea0cc230731ed4987d1d5) )	/* current MAME CHD (v5); also accepts the older v3 one */
+ROM_END
+
+
+ROM_START( kinst213 )
+	ROM_REGION( 0x80000, REGION_CPU1, 0 )		/* dummy region for R4600 */
+
+	ROM_REGION32_LE( 0x80000, REGION_USER1, 0 )	/* 512k for R4600 code */
+	ROM_LOAD( "ki2-l13.u98", 0x00000, 0x80000, CRC(25ebde3b) SHA1(771d150fb4de0a2ceb279954b9545458e93e2405) )
+
+	ROM_REGION( ADSP2100_SIZE + 0x800000, REGION_CPU2, 0 )	/* ADSP-2105 data */
+	ROM_LOAD( "ki2_l1.u10", ADSP2100_SIZE + 0x000000, 0x80000, CRC(fdf6ed51) SHA1(acfc9460cd5df01403b7f00b2f68c2a8734ad6d3) )
+	ROM_LOAD( "ki2_l1.u11", ADSP2100_SIZE + 0x100000, 0x80000, CRC(f9e70024) SHA1(fe7fc78f1c60b15f2bbdc4c455f55cdf30f48ed4) )
+	ROM_LOAD( "ki2_l1.u12", ADSP2100_SIZE + 0x200000, 0x80000, CRC(2994c199) SHA1(9997a83432cb720f65b40a8af46f31a5d0d16d8e) )
+	ROM_LOAD( "ki2_l1.u13", ADSP2100_SIZE + 0x300000, 0x80000, CRC(3fe6327b) SHA1(7ff164fc2f079d039921594be92208973d43aa03) )
+	ROM_LOAD( "ki2_l1.u33", ADSP2100_SIZE + 0x400000, 0x80000, CRC(6f4dcdcf) SHA1(0ab6dbfb76e9fa2db072e287864ad1f9d514dd9b) )
+	ROM_LOAD( "ki2_l1.u34", ADSP2100_SIZE + 0x500000, 0x80000, CRC(5db48206) SHA1(48456a7b6592c40bc9c664dcd2ee2cfd91942811) )
+	ROM_LOAD( "ki2_l1.u35", ADSP2100_SIZE + 0x600000, 0x80000, CRC(7245ce69) SHA1(24a3ff009c8a7f5a0bfcb198b8dcb5df365770d3) )
+	ROM_LOAD( "ki2_l1.u36", ADSP2100_SIZE + 0x700000, 0x80000, CRC(8920acbb) SHA1(0fca72c40067034939b984b4bf32972a5a6c26af) )
+
+	ROM_REGION( 0x600000, REGION_SOUND1, 0 )
+
+	DISK_REGION( REGION_DISKS )
+	DISK_IMAGE( "kinst2", 0, SHA1(e7c9291b4648eae0012ea0cc230731ed4987d1d5) )	/* current MAME CHD (v5); also accepts the older v3 one */
+ROM_END
+
+
+ROM_START( kinst211 )
+	ROM_REGION( 0x80000, REGION_CPU1, 0 )		/* dummy region for R4600 */
+
+	ROM_REGION32_LE( 0x80000, REGION_USER1, 0 )	/* 512k for R4600 code */
+	ROM_LOAD( "ki2-l11.u98", 0x00000, 0x80000, CRC(0cb8de1e) SHA1(fe447f4b1d29b524f57c5ba1890652ef6afff88a) )
+
+	ROM_REGION( ADSP2100_SIZE + 0x800000, REGION_CPU2, 0 )	/* ADSP-2105 data */
+	ROM_LOAD( "ki2_l1.u10", ADSP2100_SIZE + 0x000000, 0x80000, CRC(fdf6ed51) SHA1(acfc9460cd5df01403b7f00b2f68c2a8734ad6d3) )
+	ROM_LOAD( "ki2_l1.u11", ADSP2100_SIZE + 0x100000, 0x80000, CRC(f9e70024) SHA1(fe7fc78f1c60b15f2bbdc4c455f55cdf30f48ed4) )
+	ROM_LOAD( "ki2_l1.u12", ADSP2100_SIZE + 0x200000, 0x80000, CRC(2994c199) SHA1(9997a83432cb720f65b40a8af46f31a5d0d16d8e) )
+	ROM_LOAD( "ki2_l1.u13", ADSP2100_SIZE + 0x300000, 0x80000, CRC(3fe6327b) SHA1(7ff164fc2f079d039921594be92208973d43aa03) )
+	ROM_LOAD( "ki2_l1.u33", ADSP2100_SIZE + 0x400000, 0x80000, CRC(6f4dcdcf) SHA1(0ab6dbfb76e9fa2db072e287864ad1f9d514dd9b) )
+	ROM_LOAD( "ki2_l1.u34", ADSP2100_SIZE + 0x500000, 0x80000, CRC(5db48206) SHA1(48456a7b6592c40bc9c664dcd2ee2cfd91942811) )
+	ROM_LOAD( "ki2_l1.u35", ADSP2100_SIZE + 0x600000, 0x80000, CRC(7245ce69) SHA1(24a3ff009c8a7f5a0bfcb198b8dcb5df365770d3) )
+	ROM_LOAD( "ki2_l1.u36", ADSP2100_SIZE + 0x700000, 0x80000, CRC(8920acbb) SHA1(0fca72c40067034939b984b4bf32972a5a6c26af) )
+
+	ROM_REGION( 0x600000, REGION_SOUND1, 0 )
+
+	DISK_REGION( REGION_DISKS )
+	DISK_IMAGE( "kinst2", 0, SHA1(e7c9291b4648eae0012ea0cc230731ed4987d1d5) )	/* current MAME CHD (v5); also accepts the older v3 one */
+ROM_END
+
+
+ROM_START( kinst210 )
+	ROM_REGION( 0x80000, REGION_CPU1, 0 )		/* dummy region for R4600 */
+
+	ROM_REGION32_LE( 0x80000, REGION_USER1, 0 )	/* 512k for R4600 code */
+	ROM_LOAD( "ki2-l10.u98", 0x00000, 0x80000, CRC(b17b4b3d) SHA1(756629cd1b51ae50f2b9818765dd3d277c3019b3) )
+
+	ROM_REGION( ADSP2100_SIZE + 0x800000, REGION_CPU2, 0 )	/* ADSP-2105 data */
+	ROM_LOAD( "ki2_l1.u10", ADSP2100_SIZE + 0x000000, 0x80000, CRC(fdf6ed51) SHA1(acfc9460cd5df01403b7f00b2f68c2a8734ad6d3) )
+	ROM_LOAD( "ki2_l1.u11", ADSP2100_SIZE + 0x100000, 0x80000, CRC(f9e70024) SHA1(fe7fc78f1c60b15f2bbdc4c455f55cdf30f48ed4) )
+	ROM_LOAD( "ki2_l1.u12", ADSP2100_SIZE + 0x200000, 0x80000, CRC(2994c199) SHA1(9997a83432cb720f65b40a8af46f31a5d0d16d8e) )
+	ROM_LOAD( "ki2_l1.u13", ADSP2100_SIZE + 0x300000, 0x80000, CRC(3fe6327b) SHA1(7ff164fc2f079d039921594be92208973d43aa03) )
+	ROM_LOAD( "ki2_l1.u33", ADSP2100_SIZE + 0x400000, 0x80000, CRC(6f4dcdcf) SHA1(0ab6dbfb76e9fa2db072e287864ad1f9d514dd9b) )
+	ROM_LOAD( "ki2_l1.u34", ADSP2100_SIZE + 0x500000, 0x80000, CRC(5db48206) SHA1(48456a7b6592c40bc9c664dcd2ee2cfd91942811) )
+	ROM_LOAD( "ki2_l1.u35", ADSP2100_SIZE + 0x600000, 0x80000, CRC(7245ce69) SHA1(24a3ff009c8a7f5a0bfcb198b8dcb5df365770d3) )
+	ROM_LOAD( "ki2_l1.u36", ADSP2100_SIZE + 0x700000, 0x80000, CRC(8920acbb) SHA1(0fca72c40067034939b984b4bf32972a5a6c26af) )
+
+	ROM_REGION( 0x600000, REGION_SOUND1, 0 )
+
+	DISK_REGION( REGION_DISKS )
+	DISK_IMAGE( "kinst2", 0, SHA1(e7c9291b4648eae0012ea0cc230731ed4987d1d5) )	/* current MAME CHD (v5); also accepts the older v3 one */
+ROM_END
+
+
+/*************************************
+ *
+ *	Driver initialization
+ *
+ *************************************/
+
+static DRIVER_INIT( kinst )
+{
+	static const UINT8 kinst_control_map[8] = { 0,1,2,3,4,5,6,7 };
+	UINT8 *features;
+
+	dcs_init();
+	memcpy(rombase, memory_region(REGION_USER1), memory_region_length(REGION_USER1));
+
+	/* set up the control register mapping */
+	control_map = kinst_control_map;
+
+	/* spin up the hard disk */
+	ide_controller_init(0, &ide_intf);
+
+	/* tweak the model number so we pass the check */
+	features = ide_get_features(0);
+	features[27*2+0] = 0x54;
+	features[27*2+1] = 0x53;
+	features[28*2+0] = 0x31;
+	features[28*2+1] = 0x39;
+	features[29*2+0] = 0x30;
+	features[29*2+1] = 0x35;
+	features[30*2+0] = 0x47;
+	features[30*2+1] = 0x41;
+	features[31*2+0] = 0x20;
+	features[31*2+1] = 0x20;
+
+	/* optimize one of the non-standard loops */
+	kinst_install_speedup();
+
+	/* set the fastest DRC options */
+	mips3drc_set_options(0, MIPS3DRC_FASTEST_OPTIONS);
+
+	kinst_register_state();
+}
+
+
+static DRIVER_INIT( kinst2 )
+{
+	static const UINT8 kinst2_control_map[8] = { 2,4,1,0,3,5,6,7 };
+	UINT8 *features;
+
+	/* read: $80 on ki2 = $90 on ki*/
+	/* read: $88 on ki2 = $a0 on ki*/
+	/* write: $80 on ki2 = $90 on ki*/
+	/* write: $90 on ki2 = $88 on ki*/
+	/* write: $98 on ki2 = $80 on ki*/
+	/* write: $a0 on ki2 = $98 on ki*/
+
+	dcs_init();
+	memcpy(rombase, memory_region(REGION_USER1), memory_region_length(REGION_USER1));
+
+	/* set up the control register mapping */
+	control_map = kinst2_control_map;
+
+	/* spin up the hard disk */
+	ide_controller_init(0, &ide_intf);
+
+	/* tweak the model number so we pass the check */
+	features = ide_get_features(0);
+	features[10*2+0] = 0x30;
+	features[10*2+1] = 0x30;
+	features[11*2+0] = 0x54;
+	features[11*2+1] = 0x53;
+	features[12*2+0] = 0x31;
+	features[12*2+1] = 0x39;
+	features[13*2+0] = 0x30;
+	features[13*2+1] = 0x35;
+	features[14*2+0] = 0x47;
+	features[14*2+1] = 0x41;
+
+	/* optimize one of the non-standard loops */
+	kinst_install_speedup();
+
+	/* set the fastest DRC options */
+	mips3drc_set_options(0, MIPS3DRC_FASTEST_OPTIONS);
+
+	kinst_register_state();
+}
+
+
+
+/*************************************
+ *
+ *	Game driver(s)
+ *
+ *************************************/
+
+GAME( 1994, kinst,    0,      kinst, kinst,  kinst,  ROT0, "Rare / Nintendo (Midway license)", "Killer Instinct (v1.5d)" )
+GAME( 1994, kinst14,  kinst,  kinst, kinst,  kinst,  ROT0, "Rare / Nintendo (Midway license)", "Killer Instinct (v1.4)" )
+GAME( 1994, kinst13,  kinst,  kinst, kinst,  kinst,  ROT0, "Rare / Nintendo (Midway license)", "Killer Instinct (v1.3)" )
+GAME( 1994, kinstp,   kinst,  kinst, kinst,  kinst,  ROT0, "Rare / Nintendo (Midway license)", "Killer Instinct (proto v4.7)" )
+GAME( 1996, kinst2,   0,      kinst, kinst2, kinst2, ROT0, "Rare / Nintendo (Midway license)", "Killer Instinct 2 (v1.4)" )
+GAME( 1996, kinst213, kinst2, kinst, kinst2, kinst2, ROT0, "Rare / Nintendo (Midway license)", "Killer Instinct 2 (v1.3)" )
+GAME( 1996, kinst211, kinst2, kinst, kinst2, kinst2, ROT0, "Rare / Nintendo (Midway license)", "Killer Instinct 2 (v1.1)" )
+GAME( 1996, kinst210, kinst2, kinst, kinst2, kinst2, ROT0, "Rare / Nintendo (Midway license)", "Killer Instinct 2 (v1.0)" )

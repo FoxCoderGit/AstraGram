@@ -1,0 +1,1 @@
+package org.telegram.messenger; public final class GhostSimulation {public static boolean active(int account){return false;}}

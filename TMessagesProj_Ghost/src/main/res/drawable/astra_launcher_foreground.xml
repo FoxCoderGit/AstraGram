@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Preserve the complete supplied artwork within Android's adaptive-icon safe zone. -->
+    <item android:left="18dp" android:top="18dp" android:right="18dp" android:bottom="18dp">
+        <bitmap android:src="@drawable/veyl_launcher_photo" android:gravity="fill" android:filter="true" />
+    </item>
+</layer-list>

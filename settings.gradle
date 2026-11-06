@@ -1,0 +1,30 @@
+include ':TMessagesProj'
+include ':TMessagesProj_Ghost'
+// Keep upstream distribution plugins out of the local GhostGram build.
+if (!gradle.startParameter.projectProperties.containsKey('ghostOnly')) {
+    include ':TMessagesProj_App'
+    include ':TMessagesProj_AppHuawei'
+    include ':TMessagesProj_AppHockeyApp'
+    include ':TMessagesProj_AppStandalone'
+    include ':TMessagesProj_AppTests'
+}
+include ':jlatexmath'
+project(':jlatexmath').projectDir = file('TMessagesProj/lib/jlatexmath/jlatexmath')
+
+dependencyResolutionManagement {
+    repositories {
+        google()
+        mavenCentral()
+        maven {
+            url 'https://maven.aliucord.com/releases'
+            metadataSources {
+                mavenPom()
+                artifact()
+                ignoreGradleMetadataRedirection()
+            }
+        }
+    }
+}
+
+gradle.ext.androidxMediaModulePrefix = 'TMessagesProj_Modules:media3:media-'
+apply from: file("TMessagesProj_Modules/media/core_settings.gradle")

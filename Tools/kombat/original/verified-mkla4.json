@@ -1,0 +1,108 @@
+{
+  "game": "Mortal Kombat (rev 4.0 09-28-92)",
+  "files": [
+    {
+      "name": "mks-u3.rom",
+      "crc": "c615844c",
+      "sha1": "5732f9053a5f73b0cc3b0166d7dc4430829d5bc7",
+      "size": 262144
+    },
+    {
+      "name": "mks-u12.rom",
+      "crc": "258bd7f9",
+      "sha1": "463890b23f17350fb9b8a85897b0777c45bc2d54",
+      "size": 262144
+    },
+    {
+      "name": "mks-u13.rom",
+      "crc": "7b7ec3b6",
+      "sha1": "6eec1b90d4a4855f34a7ebfbf93f3358d5627db4",
+      "size": 262144
+    },
+    {
+      "name": "mkg-u105.la4",
+      "crc": "29af348f",
+      "sha1": "9f8a57606647c5ea056d61aa4ab1232538539fd8",
+      "size": 524288
+    },
+    {
+      "name": "mkg-u89.la4",
+      "crc": "1ad76662",
+      "sha1": "bee4ab5371f58df799365e73ec0cc02e903f240c",
+      "size": 524288
+    },
+    {
+      "name": "mkg-u111.rom",
+      "crc": "d17096c4",
+      "sha1": "01ef390a372c9d94adf138f9543ebb88b89f4c38",
+      "size": 524288
+    },
+    {
+      "name": "mkg-u112.rom",
+      "crc": "993bc2e4",
+      "sha1": "7791edbec2b4b8971a3e790346dd7564ecf16d5c",
+      "size": 524288
+    },
+    {
+      "name": "mkg-u113.rom",
+      "crc": "6fb91ede",
+      "sha1": "a3735b49f93b08c44fbc97e2b5aad394628fbe90",
+      "size": 524288
+    },
+    {
+      "name": "mkg-u114.rom",
+      "crc": "ed1ff88a",
+      "sha1": "6b090b658ee6148af953bd0c9216f37162b6460f",
+      "size": 524288
+    },
+    {
+      "name": "mkg-u95.rom",
+      "crc": "a002a155",
+      "sha1": "3cf7909e92bcd428063596fc5b9953e0000d6eca",
+      "size": 524288
+    },
+    {
+      "name": "mkg-u96.rom",
+      "crc": "dcee8492",
+      "sha1": "a912b74d3b26ebd1b1613cc631080f83ececeaf8",
+      "size": 524288
+    },
+    {
+      "name": "mkg-u97.rom",
+      "crc": "de88caef",
+      "sha1": "a7927b504dc56ca5c9048373977fe5743b0a3f0b",
+      "size": 524288
+    },
+    {
+      "name": "mkg-u98.rom",
+      "crc": "37eb01b4",
+      "sha1": "06092460bd137e08d0f8df8560942ed877d40e09",
+      "size": 524288
+    },
+    {
+      "name": "mkg-u106.rom",
+      "crc": "45acaf21",
+      "sha1": "5edd36c55f4e5d3c74fb85171728ec0a58284b12",
+      "size": 524288
+    },
+    {
+      "name": "mkg-u107.rom",
+      "crc": "2a6c10a0",
+      "sha1": "cc90923c44f2961b945a0fd0f85ecc2ba04af2cb",
+      "size": 524288
+    },
+    {
+      "name": "mkg-u108.rom",
+      "crc": "23308979",
+      "sha1": "0b36788624a1cf0d3f4c895be5ba967b8dfcf85e",
+      "size": 524288
+    },
+    {
+      "name": "mkg-u109.rom",
+      "crc": "cafc47bb",
+      "sha1": "8610af6e52f7089ff4acd850c53ab8b4119e4445",
+      "size": 524288
+    }
+  ],
+  "sha256": "7bb3afb42ccf5741ce01050521731aba193210fde9b5f4e0bb8751970b9fddc4"
+}

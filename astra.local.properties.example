@@ -1,0 +1,7 @@
+# Copy this file to astra.local.properties and set the values locally.
+# The real file is ignored by Git. These client values are embedded only in a
+# locally built APK; do not put any server password, private key or admin token
+# here.
+astraApiId=YOUR_TELEGRAM_API_ID
+astraApiHash=YOUR_TELEGRAM_API_HASH
+astraMapsApiKey=YOUR_GOOGLE_MAPS_API_KEY
