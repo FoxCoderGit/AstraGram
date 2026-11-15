@@ -14,14 +14,18 @@ import org.telegram.ui.Components.AlertsCreator;
 /** Sends new uploads/messages: no forward RPC, author header, source reply or source file reference. */
 public final class GhostProtectedForward {
     public static boolean restricted(MessageObject message){
-        return message!=null&&message.messageOwner!=null&&(message.messageOwner.noforwards
+        return message!=null&&message.messageOwner!=null&&(ephemeral(message)||message.messageOwner.noforwards
                 ||MessagesController.getInstance(message.currentAccount).isPeerNoForwards(message.getDialogId()));
+    }
+    public static boolean ephemeral(MessageObject message){
+        return message!=null&&message.messageOwner!=null&&!DialogObject.isEncryptedDialog(message.getDialogId())
+                &&(message.isVoiceOnce()||message.isRoundOnce()||message.isSecretMedia());
     }
     public static boolean canCopy(MessageObject message){
         if(message==null||message.messageOwner==null||!(message.messageOwner instanceof TLRPC.TL_message)
-                ||message.getId()<=0||message.isSecretMedia()||message.isEphemeralAndNotWelcome()
-                ||DialogObject.isEncryptedDialog(message.getDialogId())||message.isVoiceOnce()||message.isRoundOnce()
-                ||message.needDrawBluredPreview()||message.isSponsored()||message.isLiveLocation()
+                ||message.getId()<=0||message.isEphemeralAndNotWelcome()
+                ||DialogObject.isEncryptedDialog(message.getDialogId())
+                ||message.needDrawBluredPreview()&&!ephemeral(message)||message.isSponsored()||message.isLiveLocation()
                 ||message.type==MessageObject.TYPE_PAID_MEDIA||message.messageOwner.action!=null)return false;
         TLRPC.MessageMedia media=message.messageOwner.media;
         if(media==null||media instanceof TLRPC.TL_messageMediaEmpty||media instanceof TLRPC.TL_messageMediaWebPage)

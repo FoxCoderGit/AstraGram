@@ -52,9 +52,9 @@ public class GhostOptionalForwardSmoke {
             field(original,"type",29);check(!can(original));
             field(original,"type",0);field(owner,"id",0);check(!can(original));field(owner,"id",101);
             Object photo=make("org.telegram.tgnet.TLRPC$TL_messageMediaPhoto");field(photo,"photo",make("org.telegram.tgnet.TLRPC$TL_photo"));field(owner,"media",photo);check(can(original));
-            field(photo,"ttl_seconds",5);check(!can(original));field(photo,"ttl_seconds",0);
+            field(photo,"ttl_seconds",5);check(can(original));field(photo,"ttl_seconds",0);
             Object doc=make("org.telegram.tgnet.TLRPC$TL_messageMediaDocument");field(doc,"document",make("org.telegram.tgnet.TLRPC$TL_document"));field(owner,"media",doc);check(can(original));
-            field(doc,"ttl_seconds",Integer.MAX_VALUE);check(!can(original));
+            field(doc,"ttl_seconds",Integer.MAX_VALUE);check(can(original));
             field(owner,"media",make("org.telegram.tgnet.TLRPC$TL_messageMediaPoll"));check(!can(original));
             check(!can(null));
             field(doc,"ttl_seconds",0);field(owner,"media",doc);

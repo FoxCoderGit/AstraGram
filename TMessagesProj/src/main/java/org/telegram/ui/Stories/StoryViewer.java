@@ -2892,7 +2892,8 @@ public class StoryViewer implements NotificationCenter.NotificationCenterDelegat
         if (BuildVars.DEBUG_PRIVATE_VERSION) {
             return;
         }
-        allowScreenshots = !isShowing || allowScreenshots;
+        // Capture policy applies to both the window and its video surfaces.
+        allowScreenshots = true;
         if (this.allowScreenshots != allowScreenshots) {
             this.allowScreenshots = allowScreenshots;
 

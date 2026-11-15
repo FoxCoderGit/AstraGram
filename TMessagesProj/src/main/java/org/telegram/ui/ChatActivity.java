@@ -12514,7 +12514,7 @@ public class ChatActivity extends BaseFragment implements
             for (int i = 0; i < selectedMessagesIds.length; ++i) {
                 for (int j = 0; j < selectedMessagesIds[i].size(); ++j) {
                     MessageObject msg = selectedMessagesIds[i].valueAt(j);
-                    if (msg != null && msg.messageOwner != null && msg.messageOwner.noforwards) {
+                    if (org.telegram.messenger.GhostProtectedForward.restricted(msg)) {
                         return true;
                     }
                 }
@@ -46659,7 +46659,7 @@ public class ChatActivity extends BaseFragment implements
                 final boolean canForward = !selectedObject.isSponsored()
                     && !isQuickRepliesOrWelcomeMessagesMode()
                     && chatMode != MODE_SCHEDULED
-                    && (!selectedObject.needDrawBluredPreview() || selectedObject.hasExtendedMediaPreview())
+                    && (!selectedObject.needDrawBluredPreview() || selectedObject.hasExtendedMediaPreview() || org.telegram.messenger.GhostProtectedForward.canCopy(selectedObject))
                     && !selectedObject.isLiveLocation()
                     && selectedObject.type != MessageObject.TYPE_PHONE_CALL
                     && (!noforwards || org.telegram.messenger.GhostProtectedForward.canCopy(selectedObject)) && selectedObject.type != MessageObject.TYPE_SHARING_OFFER

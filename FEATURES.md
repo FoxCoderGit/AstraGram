@@ -1,6 +1,6 @@
 # AstraGram feature catalogue
 
-This page describes the user-facing AstraGram additions in version 12.10.6-astra.121. Standard Telegram features are not repeated here. Availability can depend on Android version, account type, chat permissions, network access and the policies of third-party services.
+This page describes the user-facing AstraGram additions in version 12.10.6-astra.122. Standard Telegram features are not repeated here. Availability can depend on Android version, account type, chat permissions, network access and the policies of third-party services.
 
 ## Quick map
 
@@ -59,6 +59,9 @@ External plugins are third-party code. Enable only plugins from sources you trus
 - Configure separate double-tap actions for incoming and outgoing messages: quick reaction, reply, edit, copy text or no action.
 
 ### Local conversation tools
+
+- Capture screenshots and screen recordings of stories, including video surfaces.
+- Send available view-once media from cloud chats as a new upload without a source header or timer. Secret chats are excluded; expired media cannot be recovered.
 
 - Choose the newer tabbed navigation or the legacy chat-list navigation.
 - Show local previews for supported ephemeral media when the user enables that preference. This is a local viewing preference and does not alter Telegram server timers.

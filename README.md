@@ -8,7 +8,7 @@
 
 ## Current release
 
-- Version: **12.10.6-astra.121**
+- Version: **12.10.6-astra.122**
 - Android package: `org.ghostgram.messenger` - retained to support updates over earlier installed builds without deleting local application data.
 - Download: [GitHub Releases](https://github.com/FoxCoderGit/AstraGram/releases/latest)
 
@@ -27,6 +27,9 @@ For the complete user-facing feature catalogue, see [FEATURES.md](FEATURES.md).
 - **Yandex Music** - optional search, favourites and audio sending. Each user signs in with their own Yandex account or token; AstraGram does not ship a shared music account.
 
 ### Messaging and interface
+
+- **Story capture** - screenshots and screen recording include story video surfaces.
+- **View-once media copies** - available cloud-chat media can be sent as a new upload without its original timer. Expired files cannot be recovered.
 
 - **Reaction notifications** - Android notifications when another user reacts to your message, including while the app is in the background.
 - **Plugin controls** - built-in optional features are enabled independently from the Plugins screen.
