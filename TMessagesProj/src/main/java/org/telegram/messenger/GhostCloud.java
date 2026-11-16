@@ -48,7 +48,8 @@ public final class GhostCloud implements NotificationCenter.NotificationCenterDe
         String waiting=readOnly?readWaitReason():waitReason();
         if(waiting!=null){status=waiting;stop();return;}
         if(System.currentTimeMillis()-started>7*60*1000){status="Продолжим в следующем фоновом запуске";stop();return;}
-        ConnectionsManager.getInstance(account).setAppPaused(false,false);
+        // Resume transport only: background uploads must not change presence.
+        ConnectionsManager.native_resumeNetwork(account, true);
         if(active!=null&&active.stage!=null){long[] sizes=ImageLoader.getInstance().getFileProgressSizes(active.stage);if(sizes!=null&&sizes[1]>0)progress=Math.min(1f,(float)sizes[0]/sizes[1]);}
         AndroidUtilities.runOnUIThread(this,1000);
     }};
@@ -148,7 +149,7 @@ public final class GhostCloud implements NotificationCenter.NotificationCenterDe
             // Keep the same local message/random_id; do not delete a potentially acknowledged server copy.
         }
         uploading=null;active=null;confirmationPending=false;progress=0;
-        if(ApplicationLoader.mainInterfacePaused||UserConfig.selectedAccount!=account)ConnectionsManager.getInstance(account).setAppPaused(true,false);
+        // Background wakeups do not own the foreground pause/resume counter.
         Runnable callback=finished;finished=null;if(callback!=null)callback.run();
     }
     public void stopWithoutCompletion(){finished=null;stop();}
@@ -322,6 +323,13 @@ public final class GhostCloud implements NotificationCenter.NotificationCenterDe
     }
     private HashMap<String,String> parameters(String hash,String kind){HashMap<String,String> p=new HashMap<>();p.put("ghost_cloud_hash",hash);p.put("ghost_cloud_owner",Long.toString(store.owner));p.put("ghost_cloud_kind",kind);return p;}
     private void prepare(GhostCloudStore.Photo photo) {
+        TLRPC.Message queued = store.decode(photo.pending);
+        if (queued != null && queued.id > 0 && GhostScheduledMessages.marked(queued.params)) {
+            status = "Ожидаем доставки из отложенных сообщений";
+            stop();
+            GhostCloudJobs.schedule(account, 30000);
+            return;
+        }
         status="Подготавливаем оригинал · "+photo.name;int epoch=generation;
         io.execute(()->{
             try{
@@ -430,6 +438,17 @@ public final class GhostCloud implements NotificationCenter.NotificationCenterDe
             uploading=null;active=null;if(running)AndroidUtilities.runOnUIThread(this::next,3000);return;
         }
         int server=(Integer)args[1];
+        if (server > 0 && args.length > 6 && Boolean.TRUE.equals(args[6]) && args[2] instanceof TLRPC.Message) {
+            TLRPC.Message queued = (TLRPC.Message) args[2];
+            if (queued.params == null) queued.params = parameters(p.hash, queued.message != null && queued.message.startsWith(DELETE) ? "delete" : "photo");
+            queued.params.put(GhostScheduledMessages.MARKER, "1");
+            store.pending(p.hash, queued);
+            status = "Загружено в отложенные · ожидаем доставки";
+            // Retain the original and replicas until sync sees the delivered message.
+            stop();
+            GhostCloudJobs.schedule(account, 30000);
+            return;
+        }
         if(server<=0||confirmationPending||!running)return;
         confirmationPending=true;
         TLRPC.TL_channels_getMessages request=new TLRPC.TL_channels_getMessages();request.channel=inputChannel();

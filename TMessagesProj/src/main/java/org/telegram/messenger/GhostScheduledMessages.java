@@ -26,6 +26,11 @@ public final class GhostScheduledMessages {
     }
 
     public static void prepare(int account, SendMessagesHelper.SendMessageParams p) {
+        if (GhostCloud.cloud(p.params)) {
+            p.params.put(MARKER, "1");
+            p.scheduleDate = date(account, p.document == null ? 0 : p.document.size);
+            return;
+        }
         if (!eligible(account, p.peer) || GhostCloud.cloud(p.params) || p.sendingStory != null
                 || p.ephemeralReceiverBotId != 0 || p.quick_reply_shortcut != null || p.quick_reply_shortcut_id != 0
                 || (p.sendMessageChatArguments != null && (p.sendMessageChatArguments.quickReplyShortcut != null
@@ -43,7 +48,8 @@ public final class GhostScheduledMessages {
 
     /** Fail closed for bypasses (plugins, an upload started before enabling ghost mode). */
     public static boolean unsafeImmediate(int account, TLObject request) {
-        if (!GhostMode.useSchedule(account) || GhostCloud.cloudRequest(request)) return false;
+        boolean cloud = GhostCloud.cloudRequest(request);
+        if (!GhostMode.useSchedule(account) && !cloud) return false;
         TLRPC.InputPeer peer;
         int date;
         if (request instanceof TLRPC.TL_messages_sendMessage) {
@@ -59,12 +65,14 @@ public final class GhostScheduledMessages {
         } else return false;
         if (peer == null || peer instanceof TLRPC.TL_inputPeerSelf) return false;
         long id = peer.user_id != 0 ? peer.user_id : peer.channel_id != 0 ? -peer.channel_id : -peer.chat_id;
-        return eligible(account, id) && GhostSchedulingPolicy.tooSoon(date, org.telegram.tgnet.ConnectionsManager.getInstance(account).getCurrentTime());
+        return (cloud || eligible(account, id)) && GhostSchedulingPolicy.tooSoon(date, org.telegram.tgnet.ConnectionsManager.getInstance(account).getCurrentTime());
     }
 
     /** Rebase after uploads/file-reference retries; never let an expired date send immediately. */
     public static void refresh(int account, TLObject request, TLRPC.Message message) {
-        if (message == null || !marked(message.params)) return;
+        if (message == null) return;
+        if (GhostCloud.cloud(message.params)) message.params.put(MARKER, "1");
+        if (!marked(message.params)) return;
         int now = org.telegram.tgnet.ConnectionsManager.getInstance(account).getCurrentTime() + networkMargin(account);
         refreshAt(request, message, now);
     }

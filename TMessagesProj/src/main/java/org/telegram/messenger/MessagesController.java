@@ -10558,6 +10558,21 @@ public class MessagesController extends BaseController implements NotificationCe
     private long lastGhostOfflineAttempt;
     private boolean ghostOfflineNeeded;
 
+    public void leaveForegroundAccount() {
+        Utilities.stageQueue.postRunnable(() -> {
+            if (!getUserConfig().isClientActivated()) return;
+            if (statusRequest != 0) getConnectionsManager().cancelRequest(statusRequest, true);
+            statusRequest = 0;
+            statusSettingState = 0;
+            lastStatusUpdateTime = 0;
+            TL_account.updateStatus request = new TL_account.updateStatus();
+            request.offline = true;
+            getConnectionsManager().sendRequest(request, (response, error) -> {
+                if (error == null) offlineSent = true;
+            });
+        });
+    }
+
     public void onGhostModeChanged(boolean enabled) {
         Utilities.stageQueue.postRunnable(() -> {
             ghostPresenceGeneration++;
@@ -10645,7 +10660,7 @@ public class MessagesController extends BaseController implements NotificationCe
         if (getUserConfig().isClientActivated()) {
             if (GhostMode.hideOnline(currentAccount)) {
                 if (GhostMode.autoOffline(currentAccount) && ghostOfflineNeeded) sendGhostModeOfflineStatus();
-            } else if (!GhostSilentEntry.holding(currentAccount) && !ignoreSetOnline && getConnectionsManager().getPauseTime() == 0 && ApplicationLoader.isScreenOn && !ApplicationLoader.mainInterfacePausedStageQueue) {
+            } else if (currentAccount == UserConfig.selectedAccount && !ApplicationLoader.mainInterfacePaused && !GhostSilentEntry.holding(currentAccount) && !ignoreSetOnline && getConnectionsManager().getPauseTime() == 0 && ApplicationLoader.isScreenOn && !ApplicationLoader.mainInterfacePausedStageQueue) {
                 if (ApplicationLoader.mainInterfacePausedStageQueueTime != 0 && Math.abs(ApplicationLoader.mainInterfacePausedStageQueueTime - System.currentTimeMillis()) > 1000) {
                     if (statusSettingState != 1 && (lastStatusUpdateTime == 0 || Math.abs(System.currentTimeMillis() - lastStatusUpdateTime) >= 55000 || offlineSent)) {
                         statusSettingState = 1;

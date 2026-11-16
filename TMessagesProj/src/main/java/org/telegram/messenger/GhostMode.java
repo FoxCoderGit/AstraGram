@@ -57,6 +57,9 @@ public final class GhostMode {
     }
     private static void changed(int account) { MessagesController.getInstance(account).onGhostModeChanged(hideOnline(account)); }
     public static boolean shouldSuppress(int account, TLObject request) {
+        if (request instanceof org.telegram.tgnet.tl.TL_account.updateStatus
+                && !((org.telegram.tgnet.tl.TL_account.updateStatus) request).offline
+                && (account != UserConfig.selectedAccount || ApplicationLoader.mainInterfacePaused)) return true;
         if(actionReceipts.containsKey(request)) return false;
         return GhostModePolicy.shouldSuppress(request, option(account,READ),option(account,STORIES),hideOnline(account),option(account,TYPING));
     }

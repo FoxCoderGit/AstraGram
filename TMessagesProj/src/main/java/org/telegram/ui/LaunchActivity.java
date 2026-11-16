@@ -1247,6 +1247,8 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
         }
         switchingAccount = true;
 
+        MessagesController.getInstance(currentAccount).leaveForegroundAccount();
+
         ConnectionsManager.getInstance(currentAccount).setAppPaused(true, false);
         UserConfig.selectedAccount = account;
         UserConfig.getInstance(0).saveConfig(false);

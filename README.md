@@ -8,7 +8,7 @@
 
 ## Current release
 
-- Version: **12.10.6-astra.122**
+- Version: **12.10.6-astra.123**
 - Android package: `org.ghostgram.messenger` - retained to support updates over earlier installed builds without deleting local application data.
 - Download: [GitHub Releases](https://github.com/FoxCoderGit/AstraGram/releases/latest)
 
@@ -27,6 +27,9 @@ For the complete user-facing feature catalogue, see [FEATURES.md](FEATURES.md).
 - **Yandex Music** - optional search, favourites and audio sending. Each user signs in with their own Yandex account or token; AstraGram does not ship a shared music account.
 
 ### Messaging and interface
+
+- **Safe screenshot view** - a button in private chats opens an anonymous text view with participant aliases, hidden media and no avatar or Premium decoration. Review the text before sharing: conversation content can still identify its participants.
+- **Background presence** - only the foreground account may announce online status; cloud sends use Telegram's scheduled queue independently of ghost-mode settings.
 
 - **Story capture** - screenshots and screen recording include story video surfaces.
 - **View-once media copies** - available cloud-chat media can be sent as a new upload without its original timer. Expired files cannot be recovered.

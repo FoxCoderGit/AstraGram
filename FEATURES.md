@@ -1,6 +1,6 @@
 # AstraGram feature catalogue
 
-This page describes the user-facing AstraGram additions in version 12.10.6-astra.122. Standard Telegram features are not repeated here. Availability can depend on Android version, account type, chat permissions, network access and the policies of third-party services.
+This page describes the user-facing AstraGram additions in version 12.10.6-astra.123. Standard Telegram features are not repeated here. Availability can depend on Android version, account type, chat permissions, network access and the policies of third-party services.
 
 ## Quick map
 
@@ -60,6 +60,8 @@ External plugins are third-party code. Enable only plugins from sources you trus
 
 ### Local conversation tools
 
+- Open a safe screenshot text view from the camera button in a private chat. Participant names and handles are replaced with aliases; avatars, media, Premium decorations and original reply/forward headers are hidden. Links and phone numbers are masked. The text itself must still be checked before sharing.
+
 - Capture screenshots and screen recordings of stories, including video surfaces.
 - Send available view-once media from cloud chats as a new upload without a source header or timer. Secret chats are excluded; expired media cannot be recovered.
 
@@ -96,6 +98,8 @@ The simulation tools create local-only chat states and responses for demonstrati
 ## Personal cloud
 
 The AstraGram cloud workflow uses a private Telegram channel owned by the current account as a personal media destination.
+
+Cloud sends use the server scheduled-message queue even when the global ghost mode is off. Upload acknowledgement is not treated as delivered backup confirmation; the client waits for the item to appear in channel history before marking it saved.
 
 - Create or verify the private channel configuration.
 - Upload eligible local media according to the selected schedule and days.
