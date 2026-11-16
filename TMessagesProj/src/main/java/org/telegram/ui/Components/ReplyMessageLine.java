@@ -235,6 +235,15 @@ public class ReplyMessageLine {
     public static final int TYPE_CONTACT = 4;
 
     public int check(MessageObject messageObject, TLRPC.User currentUser, TLRPC.Chat currentChat, Theme.ResourcesProvider resourcesProvider, final int type) {
+        if(GhostSafeScreenshot.active(messageObject)){
+            reversedOut=false;hasColor2=hasColor3=false;sponsored=false;
+            emojiDocumentId=stickerDocumentId=0;
+            if(emoji!=null)emoji.set(0L,false);
+            if(sticker!=null)sticker.set(0L,false);
+            color1=color2=color3=Theme.getColor(Theme.key_chat_inReplyLine,resourcesProvider);
+            backgroundColor=0;emojiColor=color1;
+            return nameColorAnimated.set(nameColor=Theme.getColor(Theme.key_chat_inReplyNameText,resourcesProvider));
+        }
         final boolean dark = resourcesProvider != null ? resourcesProvider.isDark() : Theme.isCurrentThemeDark();
         if (messageObject != null && !(messageObject.isOutOwner() || type == TYPE_CODE) && messageObject.overrideLinkPeerColor != null) {
             return resolveCollectionColor(messageObject, messageObject.overrideLinkPeerColor, resourcesProvider);

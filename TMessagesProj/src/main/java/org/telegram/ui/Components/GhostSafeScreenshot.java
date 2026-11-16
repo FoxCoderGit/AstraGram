@@ -36,11 +36,11 @@ public final class GhostSafeScreenshot {
     }
     public static MessageObject display(MessageObject original){
         if(!active(original))return original;
-        MessageObject cached=copies.get(original);if(cached!=null)return cached;
+        MessageObject cached=copies.get(original);if(cached!=null){cached.stableId=original.stableId;return cached;}
         if(original.messageOwner.action!=null){
             TLRPC.TL_message service=new TLRPC.TL_message();service.id=original.getId();service.peer_id=original.messageOwner.peer_id;
             service.dialog_id=original.getDialogId();service.message="[служебное сообщение]";
-            return new MessageObject(original.currentAccount,service,false,true);
+            MessageObject copy=new MessageObject(original.currentAccount,service,false,true);copy.stableId=original.stableId;return copy;
         }
         NativeByteBuffer buffer=null;
         try{
@@ -49,7 +49,12 @@ public final class GhostSafeScreenshot {
             message.dialog_id=original.getDialogId();message.attachPath=original.messageOwner.attachPath;
             message.message=redact(original.messageOwner.message,scopes.get(key(original.currentAccount,original.getDialogId())));
             message.entities.clear();message.fwd_from=null;message.via_bot_id=0;
-            MessageObject copy=new MessageObject(original.currentAccount,message,false,true);copies.put(original,copy);
+            if(message.reply_to!=null){
+                message.reply_to.quote_text=redact(message.reply_to.quote_text,scopes.get(key(original.currentAccount,original.getDialogId())));
+                if(message.reply_to.quote_entities!=null)message.reply_to.quote_entities.clear();
+            }
+            if(message.post_author!=null)message.post_author=alias(original);
+            MessageObject copy=new MessageObject(original.currentAccount,message,false,true);copy.stableId=original.stableId;copies.put(original,copy);
             if(original.replyMessageObject!=null){
                 TLRPC.TL_message reply=new TLRPC.TL_message();reply.id=original.replyMessageObject.getId();
                 reply.peer_id=original.replyMessageObject.messageOwner.peer_id;reply.from_id=original.replyMessageObject.messageOwner.from_id;
@@ -60,7 +65,7 @@ public final class GhostSafeScreenshot {
         }catch(Exception error){
             TLRPC.TL_message hidden=new TLRPC.TL_message();hidden.id=original.getId();hidden.peer_id=original.messageOwner.peer_id;
             hidden.dialog_id=original.getDialogId();hidden.out=original.isOutOwner();hidden.message="[скрыто]";
-            return new MessageObject(original.currentAccount,hidden,false,true);
+            MessageObject copy=new MessageObject(original.currentAccount,hidden,false,true);copy.stableId=original.stableId;return copy;
         }finally{if(buffer!=null)buffer.reuse();}
     }
     private GhostSafeScreenshot(){}
