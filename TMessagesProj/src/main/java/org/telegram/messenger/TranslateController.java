@@ -155,6 +155,7 @@ public class TranslateController extends BaseController {
             messageObject.messageOwner != null &&
             !messageObject.isRestrictedMessage &&
             !messageObject.isSponsored() &&
+            !(MessageObject.getMedia(messageObject) instanceof TLRPC.TL_messageMediaWidget) &&
             (
                 messageObject.type == MessageObject.TYPE_TEXT ||
                 messageObject.type == MessageObject.TYPE_VIDEO ||

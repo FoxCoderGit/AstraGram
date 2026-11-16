@@ -60,7 +60,7 @@ External plugins are third-party code. Enable only plugins from sources you trus
 
 ### Local conversation tools
 
-- Open a safe screenshot text view from the camera button in a private chat. Participant names and handles are replaced with aliases; avatars, media, Premium decorations and original reply/forward headers are hidden. Links and phone numbers are masked. The text itself must still be checked before sharing.
+- Toggle safe screenshot mode from the private chat's three-dot menu. The current chat stays on screen: participant names and handles become “я” and “собеседник”, avatars are hidden, and Premium reply patterns and custom colours are removed. Original forward headers, links and phone numbers in text are masked. Toggle the menu item again to restore the normal appearance. Review text and media before sharing, since their contents can still identify participants.
 
 - Capture screenshots and screen recordings of stories, including video surfaces.
 - Send available view-once media from cloud chats as a new upload without a source header or timer. Secret chats are excluded; expired media cannot be recovered.

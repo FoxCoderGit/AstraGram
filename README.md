@@ -8,7 +8,8 @@
 
 ## Current release
 
-- Version: **12.10.6-astra.123**
+- Version: **13.2.2-astra.127**
+- Telegram base: **13.2.2** ([upstream source](https://github.com/DrKLO/Telegram/tree/21f7d109da6ab3506c9e9577f98c6a38771ab335)).
 - Android package: `org.ghostgram.messenger` - retained to support updates over earlier installed builds without deleting local application data.
 - Download: [GitHub Releases](https://github.com/FoxCoderGit/AstraGram/releases/latest)
 
@@ -28,7 +29,7 @@ For the complete user-facing feature catalogue, see [FEATURES.md](FEATURES.md).
 
 ### Messaging and interface
 
-- **Safe screenshot view** - a button in private chats opens an anonymous text view with participant aliases, hidden media and no avatar or Premium decoration. Review the text before sharing: conversation content can still identify its participants.
+- **Safe screenshot mode** - choose “Hide participant details” from the private chat's three-dot menu to mask names and handles in the existing chat, hide avatars and remove Premium reply decorations. Choose the same item again to restore the normal appearance. Review the conversation before sharing: message content and media can still identify its participants.
 - **Background presence** - only the foreground account may announce online status; cloud sends use Telegram's scheduled queue independently of ghost-mode settings.
 
 - **Story capture** - screenshots and screen recording include story video surfaces.

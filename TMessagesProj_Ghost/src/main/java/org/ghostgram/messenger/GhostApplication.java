@@ -17,7 +17,8 @@ public class GhostApplication extends ApplicationLoader {
 
     @Override
     public void onCreate() {
-        if (org.telegram.messenger.GhostYandexMusicNetwork.isAuthProcess(this)) {
+        if (org.telegram.messenger.GhostYandexMusicNetwork.isAuthProcess(this)
+                || org.telegram.utils.twidget.WidgetEngineService.isEngineProcess()) {
             super.onCreate();
             return;
         }
@@ -27,6 +28,7 @@ public class GhostApplication extends ApplicationLoader {
         BuildVars.APP_HASH = BuildConfig.ASTRA_API_HASH;
         BuildVars.CHECK_UPDATES = false;
         BuildVars.SUPPORTS_PASSKEYS = false;
+        BuildVars.SUPPORTS_FPNV = false;
         BuildVars.IS_BILLING_UNAVAILABLE = true;
         BuildVars.DEBUG_PRIVATE_VERSION = false;
         super.onCreate();

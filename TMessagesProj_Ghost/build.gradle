@@ -29,7 +29,7 @@ android {
         minSdk 24
         targetSdk 36
         versionCode Integer.parseInt(APP_VERSION_CODE)
-        versionName APP_VERSION_NAME + '-astra.123'
+        versionName APP_VERSION_NAME + '-astra.127'
         buildConfigField 'int', 'ASTRA_API_ID', astraApiId
         buildConfigField 'String', 'ASTRA_API_HASH', '"' + astraApiHash + '"'
         manifestPlaceholders.ghostMapsApiKey = astraMapsApiKey

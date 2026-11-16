@@ -432,7 +432,7 @@ static void write_hls_media_playlist(OutputStream *os, AVFormatContext *s,
                                 (double) seg->duration / timescale, 0,
                                 seg->range_length, seg->start_pos, NULL,
                                 c->single_file ? os->initfile : seg->file,
-                                &prog_date_time, 0, 0, 0);
+                                &prog_date_time, 0);
         if (ret < 0) {
             av_log(os->ctx, AV_LOG_WARNING, "ff_hls_write_file_entry get error\n");
         }
@@ -702,7 +702,9 @@ static int write_adaptation_set(AVFormatContext *s, AVIOContext *out, int as_ind
         if (os->bit_rate > 0)
             snprintf(bandwidth_str, sizeof(bandwidth_str), " bandwidth=\"%d\"", os->bit_rate);
         else if (final) {
-            int average_bit_rate = os->pos * 8 * AV_TIME_BASE / c->total_duration;
+            int average_bit_rate = 0;
+            if (c->total_duration > 0)
+                average_bit_rate = os->pos * 8 * AV_TIME_BASE / c->total_duration;
             snprintf(bandwidth_str, sizeof(bandwidth_str), " bandwidth=\"%d\"", average_bit_rate);
         } else if (os->first_segment_bit_rate > 0)
             snprintf(bandwidth_str, sizeof(bandwidth_str), " bandwidth=\"%d\"", os->first_segment_bit_rate);
@@ -1453,8 +1455,10 @@ static int dash_init(AVFormatContext *s)
         snprintf(filename, sizeof(filename), "%s%s", c->dirname, os->initfile);
         set_http_options(&opts, c);
         if (!c->single_file) {
-            if ((ret = avio_open_dyn_buf(&ctx->pb)) < 0)
+            if ((ret = avio_open_dyn_buf(&ctx->pb)) < 0) {
+                av_dict_free(&opts);
                 return ret;
+            }
             ret = s->io_open(s, &os->out, filename, AVIO_FLAG_WRITE, &opts);
         } else {
             ctx->url = av_strdup(filename);

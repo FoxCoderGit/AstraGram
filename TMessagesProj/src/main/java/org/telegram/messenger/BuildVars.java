@@ -44,6 +44,8 @@ public class BuildVars {
 
     // works only on official app ids, disable on your forks
     public static boolean SUPPORTS_PASSKEYS = true;
+    // Telegram 13.2.2 Firebase phone-number verification capability.
+    public static boolean SUPPORTS_FPNV = true;
 
     static {
         if (ApplicationLoader.applicationContext != null) {

@@ -58,3 +58,7 @@ Tools/tests/**/*.exe
 **/__pycache__/
 *.pyc
 APK/
+
+# Upstream media test fixtures are not part of the Android application build.
+# Retrieve them from the pinned media revision when running upstream media tests.
+TMessagesProj_Modules/media/libraries/test_data/src/test/assets/

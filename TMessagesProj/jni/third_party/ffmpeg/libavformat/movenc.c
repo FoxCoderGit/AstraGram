@@ -3310,8 +3310,10 @@ static int mov_preroll_write_stbl_atoms(AVIOContext *pb, MOVTrack *track)
             if (roll_samples_remaining > 0)
                 distance = 0;
             /* Verify distance is a maximum of 32 (2.5ms) packets. */
-            if (distance > 32)
+            if (distance > 32) {
+                av_freep(&sgpd_entries);
                 return AVERROR_INVALIDDATA;
+            }
             if (i && distance == sgpd_entries[entries].roll_distance) {
                 sgpd_entries[entries].count++;
             } else {
@@ -6592,11 +6594,13 @@ static int mov_flush_fragment(AVFormatContext *s, int force)
             return 0;
         }
 
-        buf_size = avio_get_dyn_buf(mov->mdat_buf, &buf);
-        avio_wb32(s->pb, buf_size + 8);
-        ffio_wfourcc(s->pb, "mdat");
-        avio_write(s->pb, buf, buf_size);
-        ffio_reset_dyn_buf(mov->mdat_buf);
+        if (mov->mdat_buf) {
+            buf_size = avio_get_dyn_buf(mov->mdat_buf, &buf);
+            avio_wb32(s->pb, buf_size + 8);
+            ffio_wfourcc(s->pb, "mdat");
+            avio_write(s->pb, buf, buf_size);
+            ffio_reset_dyn_buf(mov->mdat_buf);
+        }
 
         if (mov->flags & FF_MOV_FLAG_GLOBAL_SIDX)
             mov->reserved_header_pos = avio_tell(s->pb);
@@ -7779,7 +7783,7 @@ static int mov_create_dvd_sub_decoder_specific_info(MOVTrack *track,
     int i, width = 720, height = 480;
     int have_palette = 0, have_size = 0;
     uint32_t palette[16];
-    char *cur = track->extradata[track->last_stsd_index];
+    char *cur = st->codecpar->extradata;
 
     while (cur && *cur) {
         if (strncmp("palette:", cur, 8) == 0) {
