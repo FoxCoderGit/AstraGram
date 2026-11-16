@@ -13,7 +13,7 @@ public final class SessionCryptoTest {
     static void reject(Task action)throws Exception{try{action.run();throw new AssertionError("Accepted invalid data");}catch(java.io.IOException|GeneralSecurityException expected){checks++;}}
     static byte[] derive(char[] password,byte[] salt,int n)throws GeneralSecurityException{PBEKeySpec spec=new PBEKeySpec(password,salt,n,256);try{return SecretKeyFactory.getInstance("PBKDF2WithHmacSHA512").generateSecret(spec).getEncoded();}finally{spec.clearPassword();}}
     public static void main(String[] args)throws Exception{
-        byte[] auth=Files.readAllBytes(Paths.get(args[0]));check(GhostAuthSnapshot.validate(auth)==1234567);check(GhostAuthSnapshot.apiId(auth)==28804573);
+        byte[] auth=Files.readAllBytes(Paths.get(args[0]));check(GhostAuthSnapshot.validate(auth)==1234567);check(GhostAuthSnapshot.apiId(auth)==145678);
         byte[] other=auth.clone();ByteBuffer.wrap(other).order(ByteOrder.LITTLE_ENDIAN).putLong(8,7654321);
         List<GhostSessionBundle.Entry> entries=Arrays.asList(new GhostSessionBundle.Entry(1234567,new byte[]{1,2,3},auth),new GhostSessionBundle.Entry(7654321,new byte[]{4,5,6},other));
         byte[] plain=GhostSessionBundle.encode(entries);char[] pass="Сложный пароль 🔐 123".toCharArray();

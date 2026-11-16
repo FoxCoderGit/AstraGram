@@ -3,7 +3,7 @@
 #include <cstdlib>
 #include <cassert>
 using namespace ghostsession;
-static Data fixture(){Data d;d.user=1234567;d.mainDc=2;d.apiId=28804573;Dc dc;dc.id=2;dc.authorized=true;dc.key.resize(256);for(size_t i=0;i<256;i++)dc.key[i]=(uint8_t)i;Address a;a.ip="127.0.0.1";a.port=443;dc.addresses.push_back(a);Salt s;s.since=100;s.until=200;s.value=123;dc.salts.push_back(s);d.dcs.push_back(dc);return d;}
+static Data fixture(){Data d;d.user=1234567;d.mainDc=2;d.apiId=145678;Dc dc;dc.id=2;dc.authorized=true;dc.key.resize(256);for(size_t i=0;i<256;i++)dc.key[i]=(uint8_t)i;Address a;a.ip="127.0.0.1";a.port=443;dc.addresses.push_back(a);Salt s;s.since=100;s.until=200;s.value=123;dc.salts.push_back(s);d.dcs.push_back(dc);return d;}
 static bool valid(const std::vector<uint8_t>& v){Data d;return decode(v.data(),v.size(),d);}
 int main(int argc,char** argv){
     auto d=fixture();auto bytes=encode(d);assert(valid(bytes));
