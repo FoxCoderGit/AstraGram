@@ -605,6 +605,7 @@ public class ChatActionCell extends BaseCell implements DownloadController.FileD
     private boolean offerExpired;
     
     public void setMessageObject(MessageObject messageObject, boolean force) {
+        messageObject=org.telegram.ui.Components.GhostSafeScreenshot.display(messageObject);
         if (messageObject == null) return;
         if (currentMessageObject == messageObject && (textLayout == null || TextUtils.equals(textLayout.getText(), messageObject.messageText)) && (hasReplyMessage || messageObject.replyMessageObject == null) && !force && messageObject.type != MessageObject.TYPE_SUGGEST_PHOTO && !messageObject.forceUpdate) {
             return;

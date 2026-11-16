@@ -13370,6 +13370,7 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
                                  boolean topNear,
                                  boolean firstInChat,
                                  boolean lastInChatList) {
+        messageObject=org.telegram.ui.Components.GhostSafeScreenshot.display(messageObject);
         if (messageObject != null) {
             messageObject.ghostDeleted = MessageHistoryStore.getInstance().isDeleted(
                     messageObject.currentAccount, messageObject.getDialogId(), messageObject.getId());
@@ -14969,7 +14970,7 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
                 avatarImage.setVisible(true, false);
                 avatarImage.setImageCoords(photoImage.getImageX() + dp(7), photoImage.getImageY() + dp(7), dp(26) * scale, dp(26) * scale);
                 avatarImage.setAlpha(avatarAlpha);
-                avatarImage.draw(canvas);
+                if(!org.telegram.ui.Components.GhostSafeScreenshot.active(currentMessageObject))avatarImage.draw(canvas);
                 avatarImage.setImageCoords(wasX, wasY, wasWidth, wasHeight);
                 avatarImage.setAlpha(wasAlpha);
                 avatarImage.setVisible(wasVisible, false);
@@ -19038,7 +19039,7 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
                 nameStringFinal = TextUtils.ellipsize(nameStringFinal, Theme.chat_namePaint, nameWidth + additionalWidth, TextUtils.TruncateAt.END);
             }
             try {
-                nameLayout = new StaticLayout(nameStringFinal, Theme.chat_namePaint, nameWidth + additionalWidth + dp(2), Layout.Alignment.ALIGN_NORMAL, 1.0f, 0.0f, false);
+                nameLayout = new StaticLayout(org.telegram.ui.Components.GhostSafeScreenshot.active(currentMessageObject)?org.telegram.ui.Components.GhostSafeScreenshot.alias(currentMessageObject):nameStringFinal, Theme.chat_namePaint, nameWidth + additionalWidth + dp(2), Layout.Alignment.ALIGN_NORMAL, 1.0f, 0.0f, false);
                 if (nameLayout.getLineCount() > 0) {
                     nameWidth = nameLayoutWidth = (int) Math.ceil(nameLayout.getLineWidth(0));
                     if (!messageObject.isAnyKindOfSticker()) {
@@ -19637,7 +19638,7 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
 
                     replyNameWidth = dp(4) + (needReplyImage ? dp(16) + (int) (textPaint.getTextSize() + Theme.chat_replyNamePaint.getTextSize()) : 0);
                     if (stringFinalName != null) {
-                        replyNameLayout = new StaticLayout(stringFinalName, Theme.chat_replyNamePaint, maxWidth + dp(6), Layout.Alignment.ALIGN_NORMAL, 1.0f, 0.0f, false);
+                        replyNameLayout = new StaticLayout(org.telegram.ui.Components.GhostSafeScreenshot.active(currentMessageObject)?org.telegram.ui.Components.GhostSafeScreenshot.alias(currentMessageObject.replyMessageObject):stringFinalName, Theme.chat_replyNamePaint, maxWidth + dp(6), Layout.Alignment.ALIGN_NORMAL, 1.0f, 0.0f, false);
                         if (replyNameLayout.getLineCount() > 0) {
                             replyNameWidth += (int) Math.ceil(replyNameLayout.getLineWidth(0)) + dp(4);
                             replyNameOffset = (int) replyNameLayout.getLineLeft(0);
@@ -21295,7 +21296,7 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
             Choreographer60FpsContent.getInstance().removeFrameCallback(invalidateOutboundsRunnable);
         }
 
-        if ((currentNameStatusDrawable != null || currentNameEmojiStatusDrawable != null || topicButton != null && (drawTopic || transitionParams.animateDrawTopic)) && drawNameLayout && nameLayout != null && (currentPosition == null || currentPosition.minX == 0 && currentPosition.minY == 0) && !(currentMessageObject.deleted && !drawingToBitmap && currentMessagesGroup != null && currentMessagesGroup.messages.size() >= 1)) {
+        if (!org.telegram.ui.Components.GhostSafeScreenshot.active(currentMessageObject) && (currentNameStatusDrawable != null || currentNameEmojiStatusDrawable != null || topicButton != null && (drawTopic || transitionParams.animateDrawTopic)) && drawNameLayout && nameLayout != null && (currentPosition == null || currentPosition.minX == 0 && currentPosition.minY == 0) && !(currentMessageObject.deleted && !drawingToBitmap && currentMessagesGroup != null && currentMessagesGroup.messages.size() >= 1)) {
             int color;
             float nameX, nameY;
             if (currentMessageObject.shouldDrawWithoutBackground()) {
@@ -22210,7 +22211,7 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
                 avatarImage.setVisible(true, false);
                 avatarImage.setImageCoords(avatarX, ny + dp(13) * (1.0f - scale), dp(26) * scale, dp(26) * scale);
                 avatarImage.setAlpha(avatarAlpha);
-                avatarImage.draw(canvas);
+                if(!org.telegram.ui.Components.GhostSafeScreenshot.active(currentMessageObject))avatarImage.draw(canvas);
                 avatarImage.setImageCoords(wasX, wasY, wasWidth, wasHeight);
                 avatarImage.setAlpha(wasAlpha);
                 avatarImage.setVisible(wasVisible, false);

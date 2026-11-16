@@ -427,6 +427,8 @@ public class ChatAvatarContainer extends FrameLayout implements FactorAnimator.T
 
     @Override
     protected boolean drawChild(@NonNull Canvas canvas, View child, long drawingTime) {
+        if(parentFragment!=null&&GhostSafeScreenshot.active(currentAccount,parentFragment.getDialogId())
+                &&(child==avatarImageView||child==timeItem||child==communityItem||child==starBgItem||child==starFgItem))return false;
         if (child == avatarImageView) {
             final boolean hasTimer = timeItem != null && timeItem.getVisibility() == VISIBLE;
             final boolean hasCommunity = communityItem != null && communityItem.getVisibility() == VISIBLE;
@@ -939,12 +941,15 @@ public class ChatAvatarContainer extends FrameLayout implements FactorAnimator.T
     }
 
     public void setTitle(CharSequence value, boolean scam, boolean fake, boolean verified, boolean premium, TLRPC.EmojiStatus emojiStatus, boolean animated) {
+        if(parentFragment!=null&&GhostSafeScreenshot.active(currentAccount,parentFragment.getDialogId())){
+            value="собеседник";scam=false;fake=false;verified=false;premium=false;emojiStatus=null;
+        }
         if (value != null) {
             value = Emoji.replaceEmoji(value, titleTextView.getPaint().getFontMetricsInt(), false);
         }
         titleTextView.setText(value);
         rightDrawableIsScam = false;
-        long ghostBadge=suppressGhostBadge||parentFragment==null?0:org.telegram.messenger.GhostBadges.documentId(currentAccount,parentFragment.getCurrentUser()!=null?parentFragment.getCurrentUser():parentFragment.getCurrentChat());
+        long ghostBadge=suppressGhostBadge||parentFragment==null||GhostSafeScreenshot.active(currentAccount,parentFragment.getDialogId())?0:org.telegram.messenger.GhostBadges.documentId(currentAccount,parentFragment.getCurrentUser()!=null?parentFragment.getCurrentUser():parentFragment.getCurrentChat());
         titleTextView.setRightDrawableOnClick(ghostBadge != 0 && DialogObject.getEmojiStatusDocumentId(emojiStatus) == 0
             ? v -> org.telegram.messenger.GhostBadges.showInfo(parentFragment, parentFragment.getCurrentUser() != null ? parentFragment.getCurrentUser() : parentFragment.getCurrentChat()) : null);
         if (scam || fake) {
@@ -1005,6 +1010,7 @@ public class ChatAvatarContainer extends FrameLayout implements FactorAnimator.T
 
 
     public void setSubtitle(CharSequence value) {
+        if(parentFragment!=null&&GhostSafeScreenshot.active(currentAccount,parentFragment.getDialogId()))value="";
         if (lastSubtitle == null) {
             if (subtitleTextView != null) {
                 subtitleTextView.setText(value);

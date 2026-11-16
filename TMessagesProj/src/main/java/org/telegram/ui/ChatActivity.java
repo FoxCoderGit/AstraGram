@@ -3497,6 +3497,7 @@ public class ChatActivity extends BaseFragment implements
 
     @Override
     public void onFragmentDestroy() {
+        org.telegram.ui.Components.GhostSafeScreenshot.disable(currentAccount,dialog_id);
         if(ghostVideoSuggestion!=null)ghostVideoSuggestion.destroy();
         if(ghostDragGesture!=null)ghostDragGesture.reset();
         if(ghostDragReceiver!=null)ghostDragReceiver.destroy();
@@ -3839,7 +3840,13 @@ public class ChatActivity extends BaseFragment implements
             @Override
             public void onItemClick(final int id) {
                 if (id == 98761) {
-                    org.telegram.ui.Components.GhostSafeScreenshot.show(ChatActivity.this, currentUser);
+                    boolean safe=org.telegram.ui.Components.GhostSafeScreenshot.toggle(currentAccount,dialog_id,currentUser);
+                    clearSelectionMode();
+                    if(chatActivityEnterView!=null)chatActivityEnterView.setVisibility(safe?View.INVISIBLE:View.VISIBLE);
+                    if(pinnedMessageView!=null)pinnedMessageView.setAlpha(safe?0f:1f);
+                    updateTitle(false);
+                    if(avatarContainer!=null){avatarContainer.updateSubtitle();avatarContainer.invalidate();}
+                    if(chatAdapter!=null)chatAdapter.notifyDataSetChanged();
                     return;
                 }
                 if (id == -1) {
@@ -31020,6 +31027,7 @@ public class ChatActivity extends BaseFragment implements
 
     @SuppressLint("ClickableViewAccessibility")
     private boolean createMenu(View v, boolean single, boolean listView, float x, float y, boolean searchGroup, boolean longpress, boolean suggestEdit) {
+        if(org.telegram.ui.Components.GhostSafeScreenshot.active(currentAccount,dialog_id))return false;
         if (actionBar.isActionModeShowed() || isReport()) {
             return false;
         }
