@@ -56,7 +56,7 @@ def main():
     config=Path('/etc/astra-relay/config.json')
     if not config.exists():atomic(config,(HERE/'config.example.json').read_bytes())
     atomic('/etc/systemd/system/astra-relay.service',(HERE/'astra-relay.service').read_bytes())
-    run('systemctl','daemon-reload');run('systemctl','enable','--now','astra-relay.service');run('systemctl','restart','astra-relay.service')
+    run('systemctl','daemon-reload');run('systemctl','enable','astra-relay.service');run('systemctl','restart','astra-relay.service')
     run('systemctl','is-active','--quiet','astra-relay.service')
     atomic(admin,source.encode());atomic(index,html.encode())
     atomic(service/'relay_control.py',(HERE/'relay_control.py').read_bytes())
