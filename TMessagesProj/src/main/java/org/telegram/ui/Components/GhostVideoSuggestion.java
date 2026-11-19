@@ -65,6 +65,10 @@ public final class GhostVideoSuggestion {
     public int visibleHeight(){return banner.getVisibility()==View.VISIBLE?dp(76):0;}
     private void start(){
         if(busy||destroyed||!GhostOptionalFeatures.enabled(GhostOptionalFeatures.VIDEO))return;
+        if(!GhostNetworkEnvironment.vpnActive(ApplicationLoader.applicationContext)){
+            if(chat.getParentActivity()!=null)chat.showDialog(new AlertDialog.Builder(chat.getParentActivity(),chat.getResourceProvider()).setTitle("yt-dlp").setMessage("Загрузка видео работает только с включённым VPN. Включите VPN и повторите попытку.").setPositiveButton("OK",null).create());
+            return;
+        }
         if(chat.getParentActivity()==null||!ChatObject.canSendVideo(chat.getCurrentChat()))return;
         final int account=chat.getCurrentAccount();
         final long dialogId=chat.getDialogId();

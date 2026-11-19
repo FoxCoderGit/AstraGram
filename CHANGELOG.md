@@ -1,5 +1,11 @@
 # Changelog
 
+## 13.2.2-astra.130
+
+- Start media dragging in selection mode only from a selected message.
+- Explain yt-dlp's VPN requirement before queuing downloads, preserving the link when VPN is absent.
+- Use direct Telegram connections when VPN is detected or the public IP is outside Russia. Check IP country over HTTPS (Country.is); unknown country also uses direct Telegram. Recheck on network changes and periodically, while retaining administrative denial deadlines.
+
 ## 13.2.2-astra.129
 
 - Add AstraRelay: native tgnet connections use an authenticated TLS WebSocket relay while preserving Telegram's MTProto encryption. WebRTC call media is excluded.

@@ -34,6 +34,7 @@ int64_t mono() {
 }
 std::mutex configurationMutex;
 RelayConfiguration configuration;
+bool relayEligible = false;
 RelayPolicy policy;
 RelayProof proofProvider;
 RelayEvent eventReceiver;
@@ -65,7 +66,7 @@ Snapshot snapshot() {
     {
         std::lock_guard<std::mutex> lock(configurationMutex);
         int64_t now = mono(), previousRetry = policy.retryAt();
-        result.route = configuration.networkAvailable ? policy.route(now) : RelayRoute::Direct;
+        result.route = configuration.networkAvailable && relayEligible ? policy.route(now) : RelayRoute::Direct;
         result.config = configuration;
         result.proof = proofProvider; result.event = eventReceiver;
         result.generation = configurationGeneration;
@@ -100,7 +101,7 @@ bool connected(uint64_t generation) {
     {
         std::lock_guard<std::mutex> lock(configurationMutex);
         int64_t now=mono();
-        if (generation != configurationGeneration || policy.accessState()!=RelayPermission::Allowed || policy.accessUntil()<=now
+        if (!relayEligible || generation != configurationGeneration || policy.accessState()!=RelayPermission::Allowed || policy.accessUntil()<=now
                 || policy.retryAt()>now || policy.attemptRemaining(now)<=0) return false;
         policy.connected(); event = eventReceiver;
     }
@@ -180,6 +181,17 @@ void configureAstraRelay(RelayConfiguration value, RelayProof proof, RelayEvent 
     for (const auto& transport : wake) transport->wake();
 }
 bool astraRelayManaged() { std::lock_guard<std::mutex> lock(configurationMutex); return configuration.managed; }
+void setAstraRelayEligible(bool eligible) {
+    std::vector<std::shared_ptr<AstraRelayTransport>> wake;
+    {
+        std::lock_guard<std::mutex> lock(configurationMutex);
+        if (relayEligible == eligible) return;
+        relayEligible = eligible;
+        configurationGeneration++;
+        wake = activeLocked();
+    }
+    for (const auto& transport : wake) transport->wake();
+}
 
 AstraRelayTransport::AstraRelayTransport(const std::string& address, uint16_t port, int peer, int wake)
     : address(address), port(port), peerFd(peer), wakeFd(wake) {}

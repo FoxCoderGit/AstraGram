@@ -50,6 +50,10 @@ void relayEvent(int type,int64_t delay) {
 }
 }
 
+extern "C" JNIEXPORT void JNICALL Java_org_telegram_messenger_AstraRelay_nativeSetRelayEligible(JNIEnv*,jclass,jboolean eligible) {
+    astragram::setAstraRelayEligible(eligible);
+}
+
 extern "C" JNIEXPORT void JNICALL Java_org_telegram_messenger_AstraRelay_nativeConfigure(
         JNIEnv* env,jclass klass,jint permission,jlong validity,jlong retry,jstring host,jstring ips,jint port,
         jstring path,jstring pins,jstring token,jboolean network) {

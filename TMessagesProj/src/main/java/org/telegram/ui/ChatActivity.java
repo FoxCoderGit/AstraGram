@@ -11380,7 +11380,7 @@ public class ChatActivity extends BaseFragment implements
     public String ghostDragTextAt(float x,float y){return textSelectionHelper==null?null:textSelectionHelper.getGhostDragTextAt(x,y);}
     public ArrayList<MessageObject> ghostDragMessages(ChatMessageCell cell){
         ArrayList<MessageObject> result=new ArrayList<>();MessageObject message=cell.getMessageObject();
-        if(message==null)return result;
+        if(message==null||ghostDragSelectionActive()&&!isGhostSelectionMember(message))return result;
         if(ghostDragSelectionActive()&&isGhostSelectionMember(message)&&org.telegram.messenger.GhostDragSettings.get("multiple")){
             for(int index=0;index<2;index++)for(int i=0;i<selectedMessagesIds[index].size();i++){MessageObject selected=selectedMessagesIds[index].valueAt(i);if(GhostDragDrop.attachment(selected))result.add(selected);}
         }else if(GhostDragDrop.attachment(message))result.add(message);

@@ -38,6 +38,9 @@ public final class AstraRelay {
     private static final DispatchQueue queue=new DispatchQueue("AstraRelayPolicy");
     private static final AtomicInteger denialSequence=new AtomicInteger();
     private static final AtomicBoolean accessRequestQueued=new AtomicBoolean();
+    private static final AtomicInteger networkGeneration=new AtomicInteger();
+    private static long countryUntil;
+    private static String country="";
     private static Context context;
     private static SharedPreferences prefs;
     private static PublicKey policyKey;
@@ -87,7 +90,9 @@ public final class AstraRelay {
 
     private static void networkChanged(){
         if(!initialized)return;
-        queue.postRunnable(()->{applyNative();if(networkAvailable())refresh(false);});
+        networkGeneration.incrementAndGet();
+        nativeSetRelayEligible(false);
+        queue.postRunnable(()->{countryUntil=0;applyNative();if(networkAvailable())refresh(false);});
     }
 
     public static void onLicenseChanged(){
@@ -142,6 +147,7 @@ public final class AstraRelay {
     private static void refresh(boolean force){
         long now=SystemClock.elapsedRealtime();
         if(busy||!networkAvailable()){schedule();return;}
+        if(!updateEligibility()){scheduleAfter(60000);return;}
         if(deniedDeadline>now){permission=2;applyNative();schedule();return;}
         if(!force&&retryDeadline>now){schedule();return;}
         if(!force&&permission==1&&Math.min(accessDeadline,tokenDeadline)-now>60000){schedule();return;}
@@ -184,6 +190,30 @@ public final class AstraRelay {
             return;
         }finally{busy=false;}
         schedule();
+    }
+
+    private static boolean updateEligibility(){
+        if(GhostNetworkEnvironment.vpnActive(context)){nativeSetRelayEligible(false);return false;}
+        int generation=networkGeneration.get();
+        long now=SystemClock.elapsedRealtime();
+        if(now>=countryUntil){
+            nativeSetRelayEligible(false);
+            HttpsURLConnection connection=null;
+            try{
+                connection=(HttpsURLConnection)new URL("https://api.country.is/").openConnection();
+                connection.setConnectTimeout(5000);connection.setReadTimeout(5000);connection.setInstanceFollowRedirects(false);
+                if(connection.getResponseCode()!=200)throw new java.io.IOException();
+                try(InputStream stream=connection.getInputStream()){
+                    country=new JSONObject(new String(read(stream,4096),StandardCharsets.UTF_8)).getString("country");
+                }
+                if(!country.matches("[A-Z]{2}"))throw new java.io.IOException();
+                countryUntil=SystemClock.elapsedRealtime()+HOUR;
+            }catch(Exception ignored){country="";countryUntil=0;}
+            finally{if(connection!=null)connection.disconnect();}
+        }
+        boolean eligible=generation==networkGeneration.get()&&"RU".equals(country)&&!GhostNetworkEnvironment.vpnActive(context);
+        nativeSetRelayEligible(eligible);
+        return eligible;
     }
 
     private static JSONObject verify(JSONObject envelope,String nonce)throws Exception{
@@ -248,7 +278,7 @@ public final class AstraRelay {
         else if(retryDeadline>now)delay=retryDeadline-now;
         else if(permission==1&&Math.min(accessDeadline,tokenDeadline)>now)delay=Math.max(10000,Math.min(accessDeadline,tokenDeadline)-now-30000);
         else delay=30000;
-        scheduleAfter(delay);
+        scheduleAfter(Math.min(delay,60000));
     }
     private static void scheduleAfter(long delay){
         delay=Math.max(1000,Math.min(DAY,delay));queue.cancelRunnable(wakeTask);queue.postRunnable(wakeTask,delay);
@@ -282,5 +312,6 @@ public final class AstraRelay {
         });
     }
     private static native void nativeConfigure(int permission,long validMs,long retryMs,String host,String ips,int port,String path,String pins,String token,boolean network);
+    private static native void nativeSetRelayEligible(boolean eligible);
     private AstraRelay(){}
 }

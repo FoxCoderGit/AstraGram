@@ -38,7 +38,7 @@ public class GhostPluginsActivity extends BaseFragment {
     private static final int REQUEST_PLUGIN = 9107;
     private static final String[] BUILTINS={GhostOptionalFeatures.MUSIC,GhostOptionalFeatures.DRAWING,GhostOptionalFeatures.VIDEO,GhostOptionalFeatures.EXTERA_SUPPORTERS};
     private static final String[] BUILTIN_NAMES={"Я.Музыка","Рисовка","yt-dlp","Поддержавшие exteraGram"};
-    private static final String[] BUILTIN_DESCRIPTIONS={"Поиск, понравившиеся треки и отправка музыки","Рисование голосовых сообщений","Загрузка и отправка видео по ссылкам из YouTube, TikTok, Instagram и других сервисов","Отметки поддержки exteraGram из его публичного API"};
+    private static final String[] BUILTIN_DESCRIPTIONS={"Поиск, понравившиеся треки и отправка музыки","Рисование голосовых сообщений","Загрузка видео по ссылкам. Работает только с включённым VPN","Отметки поддержки exteraGram из его публичного API"};
 
     private static final int MANAGEMENT_HEADER=BUILTINS.length+1, ENGINE_ROW=MANAGEMENT_HEADER+1, INSTALL_ROW=ENGINE_ROW+1, RELOAD_ROW=INSTALL_ROW+1, INSTALLED_HEADER=RELOAD_ROW+1, INSTALLED_START=INSTALLED_HEADER+1;
 

@@ -110,6 +110,7 @@ public final class GhostVideoDownloader {
             File directory=null;
             try{
                 if(job.cancelled.get())return;
+                if(!GhostNetworkEnvironment.vpnActive(ApplicationLoader.applicationContext))throw new IOException("Для загрузки видео через yt-dlp включите VPN и повторите попытку.");
                 publish(job,listener,"Подготовка yt-dlp…");initialize();
                 if(job.cancelled.get())return;
                 directory=new File(ApplicationLoader.applicationContext.getCacheDir(),"ghost-video/"+job.id);
@@ -166,7 +167,7 @@ public final class GhostVideoDownloader {
                     String raw=error.getMessage()==null?"":error.getMessage();
                     String message=raw.contains("Requested format")?"Нет подходящего качества: короткая сторона должна быть от 360 до 720 px. Можно отправить обычную ссылку."
                             :raw.contains("Sign in")||raw.contains("login")||raw.contains("cookies")?"Сервис требует авторизацию. Можно отправить обычную ссылку."
-                            :raw.contains("Недостаточно")||raw.contains("слишком")||raw.contains("превышает")?raw
+                            :raw.contains("VPN")||raw.contains("Недостаточно")||raw.contains("слишком")||raw.contains("превышает")?raw
                             :"Не удалось загрузить видео. Проверьте сеть и доступность ссылки; исходную ссылку можно отправить обычным способом.";
                     AndroidUtilities.runOnUIThread(()->listener.failed(message));
                 }

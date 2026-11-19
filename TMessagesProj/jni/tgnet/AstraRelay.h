@@ -28,6 +28,7 @@ using RelayEvent = std::function<void(int, int64_t)>;
 
 void configureAstraRelay(RelayConfiguration configuration, RelayProof proof, RelayEvent event);
 bool astraRelayManaged();
+void setAstraRelayEligible(bool eligible);
 
 class AstraRelayTransport : public std::enable_shared_from_this<AstraRelayTransport> {
 public:
