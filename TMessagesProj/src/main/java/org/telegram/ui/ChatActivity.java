@@ -472,6 +472,10 @@ public class ChatActivity extends BaseFragment implements
     private ActionBarMenuItem.Item savedChatsItem, savedChatsGap;;
     private ActionBarMenuItem headerItem;
     private ActionBarMenuItem.Item safeScreenshotItem;
+    private boolean loadingChatBeginning;
+    private int chatBeginningRequestId;
+    private int chatBeginningGeneration;
+    private AlertDialog chatBeginningProgress;
     protected ActionBarMenuItem searchItem;
     protected ActionBarMenuItem topicCreateItem;
     private ActionBarMenuItem topicsPanelItem;
@@ -3484,6 +3488,7 @@ public class ChatActivity extends BaseFragment implements
 
     @Override
     public void onFragmentDestroy() {
+        finishChatBeginning();
         org.telegram.ui.Components.GhostSafeScreenshot.disable(currentAccount,dialog_id);
         if(ghostVideoSuggestion!=null)ghostVideoSuggestion.destroy();
         if(ghostDragGesture!=null)ghostDragGesture.reset();
@@ -3866,6 +3871,10 @@ public class ChatActivity extends BaseFragment implements
         actionBar.setActionBarMenuOnItemClick(new ActionBar.ActionBarMenuOnItemClick() {
             @Override
             public void onItemClick(final int id) {
+                if (id == 98762) {
+                    jumpToChatBeginning();
+                    return;
+                }
                 if (id == 98761) {
                     boolean safe=org.telegram.ui.Components.GhostSafeScreenshot.toggle(currentAccount,dialog_id,currentUser);
                     clearSelectionMode();
@@ -4599,6 +4608,7 @@ public class ChatActivity extends BaseFragment implements
                 headerItem.lazilyAddSubItem(24050, R.drawable.msg_customize, LocaleController.getString(R.string.GhostSimulation));
             }
             if(chatMode==MODE_DEFAULT)headerItem.lazilyAddSubItem(24054,R.drawable.msg_gallery,"Скриншот переписки");
+            if(chatMode==MODE_DEFAULT)headerItem.lazilyAddSubItem(98762,R.drawable.msg_go_up,getString(R.string.GhostChatBeginning));
             safeScreenshotItem=null;
             if(chatMode==MODE_DEFAULT&&currentUser!=null&&!currentUser.bot){
                 safeScreenshotItem=headerItem.lazilyAddSubItem(98761,R.drawable.msg_camera,
@@ -13248,6 +13258,79 @@ public class ChatActivity extends BaseFragment implements
             }
         }
         return groupedMessages;
+    }
+
+    private void finishChatBeginning() {
+        chatBeginningGeneration++;
+        loadingChatBeginning = false;
+        if (chatBeginningRequestId != 0) {
+            getConnectionsManager().cancelRequest(chatBeginningRequestId, true);
+            chatBeginningRequestId = 0;
+        }
+        if (chatBeginningProgress != null) {
+            chatBeginningProgress.dismiss();
+            chatBeginningProgress = null;
+        }
+    }
+
+    private void jumpToChatBeginning() {
+        if (loadingChatBeginning || firstLoading || waitingForGetDifference || getParentActivity() == null) return;
+        loadingChatBeginning = true;
+        final int generation = ++chatBeginningGeneration;
+        chatBeginningProgress = new AlertDialog(getParentActivity(), AlertDialog.ALERT_TYPE_SPINNER, themeDelegate);
+        chatBeginningProgress.setOnCancelListener(dialog -> finishChatBeginning());
+        chatBeginningProgress.showDelayed(500);
+        if (isSecretChat()) {
+            getMessagesStorage().getStorageQueue().postRunnable(() -> {
+                int messageId = 0;
+                boolean failed = false;
+                org.telegram.SQLite.SQLiteCursor cursor = null;
+                try {
+                    cursor = getMessagesStorage().getDatabase().queryFinalized(
+                        "SELECT mid FROM messages_v2 WHERE uid = ? ORDER BY date ASC, mid DESC LIMIT 1", dialog_id);
+                    if (cursor.next()) messageId = cursor.intValue(0);
+                } catch (Exception error) {
+                    FileLog.e(error);
+                    failed = true;
+                } finally {
+                    if (cursor != null) cursor.dispose();
+                }
+                final int firstId = messageId;
+                final boolean loadFailed = failed;
+                AndroidUtilities.runOnUIThread(() -> {
+                    if (!loadingChatBeginning || isFinished || generation != chatBeginningGeneration) return;
+                    finishChatBeginning();
+                    if (firstId != 0) scrollToMessageId(firstId, 0, false, 0, true, 0);
+                    else BulletinFactory.of(this).createErrorBulletin(getString(loadFailed ? R.string.UnknownError : R.string.NoMessages)).show();
+                });
+            });
+        } else {
+            loadChatBeginning(mergeDialogId != 0 && threadMessageId == 0 ? 1 : 0, generation);
+        }
+    }
+
+    private void loadChatBeginning(int loadIndex, int generation) {
+        long peerId = loadIndex == 1 ? mergeDialogId : dialog_id;
+        long threadId = loadIndex == 0 ? threadMessageId : 0;
+        TLRPC.InputPeer savedPeer = threadId != 0 && ChatObject.isMonoForum(currentChat)
+            ? getMessagesController().getInputPeer(threadId) : null;
+        TLObject request = org.telegram.messenger.GhostChatBeginning.request(
+            getMessagesController().getInputPeer(peerId), threadId, savedPeer);
+        chatBeginningRequestId = getConnectionsManager().sendRequest(request, (response, error) -> AndroidUtilities.runOnUIThread(() -> {
+            if (!loadingChatBeginning || isFinished || generation != chatBeginningGeneration) return;
+            chatBeginningRequestId = 0;
+            TLRPC.Message first = response instanceof TLRPC.messages_Messages
+                ? org.telegram.messenger.GhostChatBeginning.first((TLRPC.messages_Messages) response) : null;
+            if (first == null && loadIndex == 1) {
+                loadChatBeginning(0, generation);
+                return;
+            }
+            finishChatBeginning();
+            if (first != null) scrollToMessageId(first.id, 0, false, loadIndex, true, 0);
+            else if (error != null) AlertsCreator.processError(currentAccount, error, this, request);
+            else BulletinFactory.of(this).createErrorBulletin(getString(R.string.NoMessages)).show();
+        }));
+        getConnectionsManager().bindRequestToGuid(chatBeginningRequestId, classGuid);
     }
 
     public void jumpToDate(int date) {

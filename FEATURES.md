@@ -60,6 +60,8 @@ External plugins are third-party code. Enable only plugins from sources you trus
 
 ### Local conversation tools
 
+- Jump to the oldest accessible message with “Go to beginning” in the chat, group or channel menu. Migrated group history and the current forum topic are respected; secret chats use local history.
+
 - Toggle safe screenshot mode from the private chat's three-dot menu. The current chat stays on screen: participant names and handles become “я” and “собеседник”, avatars are hidden, and Premium reply patterns and custom colours are removed. Original forward headers, links and phone numbers in text are masked. Toggle the menu item again to restore the normal appearance. Review text and media before sharing, since their contents can still identify participants.
 
 - Capture screenshots and screen recordings of stories, including video surfaces.

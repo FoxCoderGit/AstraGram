@@ -1,5 +1,11 @@
 # Changelog
 
+## 13.2.2-astra.128
+
+- Fix a crash when opening Devices: the session backup action now uses the current Telegram action bar.
+- Add “В начало” / “Go to beginning” to the chat, group and channel menu. It resolves the oldest accessible message, handles deleted initial messages and migrated group history, and respects the current topic. Secret chats use their locally stored history.
+- Allow cancelling the history lookup and discard responses after cancellation or closing the chat.
+
 ## 13.2.2-astra.127
 
 - Upgrade the Telegram Android base to 13.2.2, including its protocol schema, native libraries and media components.

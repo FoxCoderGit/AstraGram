@@ -482,4 +482,5 @@
     <string name="GhostLicenseDeviceError">Не удалось открыть защищённое хранилище ключа устройства. Перезапустите приложение и попробуйте снова.</string>
     <string name="GhostLicenseNetwork">Не удалось проверить доступ. Проверьте подключение и попробуйте снова. Повторно вводить ключ не нужно.</string>
     <string name="GhostAccountOffline">Аккаунт отключён</string>
+    <string name="GhostChatBeginning">В начало</string>
 </resources>

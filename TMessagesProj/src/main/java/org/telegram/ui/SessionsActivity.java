@@ -223,7 +223,7 @@ public class SessionsActivity extends BaseFragment implements NotificationCenter
                 }
             }
         });
-        if(currentType==0)actionBar.createMenu().addItem(24087,R.drawable.msg_download).setContentDescription("Резервные копии сессий");
+        if(currentType==0)simpleActionBar.createMenu().addItem(24087,R.drawable.msg_download).setContentDescription("Резервные копии сессий");
         if (parentLayout != null && parentLayout.isRightLayout()) {
             simpleActionBar.setBackButtonImage(R.drawable.ic_ab_close);
         }
