@@ -1,6 +1,6 @@
 # AstraGram feature catalogue
 
-This page describes AstraGram additions through the local 13.2.2-astra.129 build. Standard Telegram features are not repeated here. Availability can depend on Android version, account type, chat permissions, network access and the policies of third-party services.
+This page describes AstraGram additions through the local 13.2.2-astra.130 build. Standard Telegram features are not repeated here. Availability can depend on Android version, account type, chat permissions, network access and the policies of third-party services.
 
 ## Quick map
 
@@ -17,6 +17,8 @@ This page describes AstraGram additions through the local 13.2.2-astra.129 build
 
 Starting with build 129, tgnet's Telegram message, file, media/CDN and background TCP connections use an authenticated WSS relay. The VPS forwards the original MTProto stream; Telegram message encryption remains intact. WebRTC voice/video media and other applications' device traffic are excluded.
 
+Starting with build 130, relay use additionally requires no active Android VPN and a public IP identified as Russian. Other countries and failed/unknown IP lookups use direct Telegram. The country lookup uses HTTPS and is rechecked after network changes.
+
 Technical connection failures allow 30 seconds for recovery before direct Telegram is used, followed by another relay attempt after one hour. Administrative denial switches to direct Telegram immediately and is checked again after 24 hours. The app has no additional relay settings or notifications. The owner manages global and per-device access, live connection counts and tunnel reconnections in the web admin panel.
 
 ## Plugins
@@ -26,6 +28,7 @@ The **Plugins** screen is the central place for optional modules. Built-in modul
 - **Yandex Music**: search for tracks, view "My likes", preview available tracks and send an audio file to a Telegram chat. Authorization uses the current user's own Yandex account or token and is stored locally on the device.
 - **Voice-message drawing**: create a visual drawing-based silent voice message from the attachment flow.
 - **yt-dlp video download**: download supported public video links, convert them to an Android-compatible MP4 when necessary and queue them for sending.
+- **VPN requirement for video downloads**: yt-dlp requires an active Android VPN. Without it, the app explains the requirement before creating a download task and retains the link in the compose field.
 - **exteraGram supporter badges**: optionally display badges obtained from the public exteraGram profile service.
 - **External plugin engine**: enable or disable the engine, install a `.plugin` file, reload installed plugins, search the plugin list, inspect plugin information and enable modules separately. The engine supports Python plugins and Java hooks.
 
