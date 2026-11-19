@@ -27,6 +27,7 @@ import java.security.Signature;
 import java.security.spec.X509EncodedKeySpec;
 import java.util.ArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicBoolean;
 import javax.net.ssl.HttpsURLConnection;
 
 /** Private application transport policy. No UI, account credentials or device-wide interception. */
@@ -36,6 +37,7 @@ public final class AstraRelay {
     private static final String CONTROL="https://verification.codebyfox.ru:9446";
     private static final DispatchQueue queue=new DispatchQueue("AstraRelayPolicy");
     private static final AtomicInteger denialSequence=new AtomicInteger();
+    private static final AtomicBoolean accessRequestQueued=new AtomicBoolean();
     private static Context context;
     private static SharedPreferences prefs;
     private static PublicKey policyKey;
@@ -254,13 +256,16 @@ public final class AstraRelay {
     @Keep
     public static void onNativeRelayEvent(int type,long delay){
         if(!initialized)return;
+        if(type==0&&!accessRequestQueued.compareAndSet(false,true))return;
         if(type==2)denialSequence.incrementAndGet();
         queue.postRunnable(()->{
+            try{
             long now=SystemClock.elapsedRealtime();
             if(type==2){permission=2;deniedDeadline=now+DAY;accessDeadline=deniedDeadline;retryDeadline=0;token="";saveDeadlines();applyNative();schedule();}
             else if(type==1){retryDeadline=now+Math.max(1,Math.min(HOUR,delay));saveDeadlines();schedule();}
             else if(type==3){retryDeadline=0;prefs.edit().remove("retry_elapsed").remove("retry_wall").apply();schedule();}
             else if(type==0&&now-lastSuccessfulRefresh>=5000)refresh(true);
+            }finally{if(type==0)accessRequestQueued.set(false);}
         });
     }
     private static native void nativeConfigure(int permission,long validMs,long retryMs,String host,String ips,int port,String path,String pins,String token,boolean network);

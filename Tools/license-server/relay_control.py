@@ -7,6 +7,8 @@ SOCKET = '/run/astra-relay/admin.sock'
 
 class LocalConnection(http.client.HTTPConnection):
     def connect(self):
+        if not hasattr(socket, 'AF_UNIX'):
+            raise OSError('Local relay control requires Unix sockets')
         self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         self.sock.settimeout(5)
         self.sock.connect(SOCKET)

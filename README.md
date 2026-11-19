@@ -13,6 +13,8 @@
 - Android package: `org.ghostgram.messenger` - retained to support updates over earlier installed builds without deleting local application data.
 - Download: [GitHub Releases](https://github.com/FoxCoderGit/AstraGram/releases/latest)
 
+Local development builds 128–129 additionally include the Devices crash fix, a chat-menu action to open the oldest accessible message, and AstraRelay with owner-panel access controls. See [CHANGELOG.md](CHANGELOG.md) and the [relay architecture](Tools/astra-relay/ARCHITECTURE.md). These changes are not a new GitHub release until published separately.
+
 ## AstraGram additions
 
 The following capabilities are added or extended beyond the standard Telegram Android client.

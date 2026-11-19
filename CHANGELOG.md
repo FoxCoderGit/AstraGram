@@ -1,5 +1,12 @@
 # Changelog
 
+## 13.2.2-astra.129
+
+- Add AstraRelay: native tgnet connections use an authenticated TLS WebSocket relay while preserving Telegram's MTProto encryption. WebRTC call media is excluded.
+- Recover from technical relay failures for 30 seconds, fall back to direct Telegram, and retry after one hour. Signed administrative denials take effect immediately and are checked again after 24 hours.
+- Add device-key authentication, replay protection, signed endpoint/pin updates, Telegram-only destination restrictions and bounded connection/traffic buffers.
+- Add owner-panel controls for global relay access, individual devices, connection statistics and tunnel reconnection. Changes require owner authentication and CSRF protection and are recorded in the audit log.
+
 ## 13.2.2-astra.128
 
 - Fix a crash when opening Devices: the session backup action now uses the current Telegram action bar.

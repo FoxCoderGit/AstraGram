@@ -17,6 +17,7 @@ set -eu
 install -o ghostgram-license -g ghostgram-license -m 600 /etc/letsencrypt/live/veylgram-services/fullchain.pem /var/lib/ghostgram-license/domains.crt
 install -o ghostgram-license -g ghostgram-license -m 600 /etc/letsencrypt/live/veylgram-services/privkey.pem /var/lib/ghostgram-license/domains.key
 systemctl try-restart ghostgram-license.service
+systemctl try-restart astra-relay.service 2>/dev/null || true
 '''
     with ssh.open_sftp() as sftp:
         path='/etc/letsencrypt/renewal-hooks/deploy/veylgram-services'

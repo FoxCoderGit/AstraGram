@@ -1,0 +1,15 @@
+{
+  "listen": ":9446",
+  "tls_cert": "/run/credentials/astra-relay.service/tls.crt",
+  "tls_key": "/run/credentials/astra-relay.service/tls.key",
+  "signing_key": "/run/credentials/astra-relay.service/policy.pem",
+  "token_key": "/var/lib/astra-relay/token.key",
+  "policy_file": "/var/lib/astra-relay/policy.json",
+  "admin_socket": "/run/astra-relay/admin.sock",
+  "endpoint": {
+    "host": "verification.codebyfox.ru",
+    "ips": ["93.88.204.2"],
+    "port": 9446,
+    "path": "/v1/tunnel"
+  }
+}

@@ -1,0 +1,38 @@
+[Unit]
+Description=AstraRelay encrypted Telegram transport
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=astra-relay
+Group=astra-relay
+ExecStart=/opt/astra-relay/astra-relay -config /etc/astra-relay/config.json
+Restart=on-failure
+RestartSec=5
+StateDirectory=astra-relay
+StateDirectoryMode=0700
+RuntimeDirectory=astra-relay
+RuntimeDirectoryMode=0750
+LoadCredential=tls.crt:/var/lib/ghostgram-license/domains.crt
+LoadCredential=tls.key:/var/lib/ghostgram-license/domains.key
+LoadCredential=policy.pem:/var/lib/ghostgram-license/lease-signing.pem
+UMask=0077
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+CapabilityBoundingSet=
+LockPersonality=yes
+LimitNOFILE=8192
+TasksMax=256
+MemoryHigh=192M
+MemoryMax=384M
+Environment=GOMEMLIMIT=128MiB GOMAXPROCS=2
+
+[Install]
+WantedBy=multi-user.target

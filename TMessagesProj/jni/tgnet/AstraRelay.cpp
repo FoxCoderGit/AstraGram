@@ -275,7 +275,7 @@ void AstraRelayTransport::run() {
                 if (result == 1) { handshake = true; break; }
                 if (!sslWait(result,deadline)) break;
             }
-            if (!handshake) { wait(-1,0,mono()+500); continue; }
+            if (!handshake) { notify(0,0); wait(-1,0,mono()+500); continue; }
             std::array<uint8_t,16> nonce{}; if (RAND_bytes(nonce.data(),nonce.size()) != 1) break;
             std::string key = base64(nonce.data(),nonce.size());
             std::string headers = current.proof ? current.proof(current.config.token,address,port) : "";

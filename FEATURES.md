@@ -1,6 +1,6 @@
 # AstraGram feature catalogue
 
-This page describes the user-facing AstraGram additions in version 12.10.6-astra.123. Standard Telegram features are not repeated here. Availability can depend on Android version, account type, chat permissions, network access and the policies of third-party services.
+This page describes AstraGram additions through the local 13.2.2-astra.129 build. Standard Telegram features are not repeated here. Availability can depend on Android version, account type, chat permissions, network access and the policies of third-party services.
 
 ## Quick map
 
@@ -11,6 +11,13 @@ This page describes the user-facing AstraGram additions in version 12.10.6-astra
 | Messaging | Reaction notifications, interaction shortcuts, local chat tools and privacy controls |
 | Organization | Attachment ordering, task queue, account layout, floating chats and app trigger |
 | Services | Personal cloud, badges, release updates and diagnostics |
+| Transport | Automatic AstraRelay transport for tgnet, with direct-connection fallback |
+
+## AstraRelay transport
+
+Starting with build 129, tgnet's Telegram message, file, media/CDN and background TCP connections use an authenticated WSS relay. The VPS forwards the original MTProto stream; Telegram message encryption remains intact. WebRTC voice/video media and other applications' device traffic are excluded.
+
+Technical connection failures allow 30 seconds for recovery before direct Telegram is used, followed by another relay attempt after one hour. Administrative denial switches to direct Telegram immediately and is checked again after 24 hours. The app has no additional relay settings or notifications. The owner manages global and per-device access, live connection counts and tunnel reconnections in the web admin panel.
 
 ## Plugins
 

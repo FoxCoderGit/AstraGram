@@ -74,6 +74,36 @@ class OwnerConsole(unittest.TestCase):
         with server.db() as c: self.assertEqual(2,c.execute('SELECT count(*) FROM licenses').fetchone()[0])
         self.call('/admin/api/licenses', {'action':'delete','ids':ids})
         with server.db() as c: self.assertEqual(0,c.execute('SELECT count(*) FROM licenses').fetchone()[0])
+    def test_relay_owner_permissions_and_audit(self):
+        import relay_control
+        with patch.object(relay_control, 'request', return_value={'status':'ok'}) as bridge:
+            self.rejected('login_required', lambda: self.call('/admin/api/relay'))
+            self.login()
+            self.rejected('csrf', lambda: self.call('/admin/api/relay', {'action':'reconnect'}, extra={'X-CSRF-Token':'wrong'}))
+            self.rejected('bad_origin', lambda: self.call('/admin/api/relay', {'action':'reconnect'}, extra={'Origin':'https://attacker.example'}))
+            self.rejected('bad_request', lambda: self.call('/admin/api/relay', {'action':'enabled', 'enabled':'false'}))
+            self.rejected('bad_request', lambda: self.call('/admin/api/relay', {'action':'device', 'device':'../etc/passwd', 'denied':True}))
+            bridge.assert_not_called()
+            self.call('/admin/api/relay')
+            bridge.assert_called_with(server, 'GET', '/policy')
+            self.call('/admin/api/relay', {'action':'enabled', 'enabled':False})
+            bridge.assert_called_with(server, 'POST', '/policy', {'enabled':False})
+            self.call('/admin/api/relay', {'action':'device', 'device':'b'*64, 'denied':True})
+            bridge.assert_called_with(server, 'POST', '/policy', {'device':'b'*64, 'denied':True})
+            self.call('/admin/api/relay', {'action':'reconnect'})
+            bridge.assert_called_with(server, 'POST', '/reconnect', {})
+            with server.db() as c:
+                actions=[row['action'] for row in c.execute('SELECT action FROM owner_audit')]
+            self.assertTrue({'relay.enabled','relay.device','relay.reconnect'}.issubset(actions))
+        h, raw = self.call('/admin/relay.js')
+        self.assertEqual(200,h.status)
+        self.assertIn(b'relayReconnect',raw)
+    def test_relay_unavailable_does_not_break_console(self):
+        import relay_control
+        self.login()
+        with patch.object(relay_control, 'SOCKET', str(server.DATA/'absent.sock')):
+            self.rejected('relay_unavailable', lambda: self.call('/admin/api/relay'))
+        self.call('/admin/api/state')
     def test_signed_policy_and_telemetry_privacy(self):
         self.login(); self.call('/admin/api/policy', {'require_key':False})
         _, signed = self.call('/v1/policy')
