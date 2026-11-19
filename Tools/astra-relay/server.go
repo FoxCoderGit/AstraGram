@@ -73,7 +73,10 @@ func (s *relayServer) tunnelHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	ip := peerIP(r)
 	if !s.reserve(claims.Device, ip) {
-		w.WriteHeader(429)
+		s.mu.Lock()
+		denied := !s.policy.Enabled || s.policy.Denied[claims.Device]
+		s.mu.Unlock()
+		if denied { w.WriteHeader(403) } else { w.WriteHeader(429) }
 		return
 	}
 	defer s.release(claims.Device, ip)

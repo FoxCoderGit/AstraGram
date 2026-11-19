@@ -366,6 +366,8 @@ public class ApplicationLoader extends Application {
 
         applicationHandler = new Handler(applicationContext.getMainLooper());
 
+        if ("org.ghostgram.messenger".equals(getPackageName())) AstraRelay.installNativeGate(this);
+
         AndroidUtilities.runOnUIThread(ApplicationLoader::startPushService);
 
         LauncherIconController.tryFixLauncherIconIfNeeded();

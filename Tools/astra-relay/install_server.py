@@ -43,7 +43,7 @@ def main():
         if html.count(anchor)!=1:raise RuntimeError('Admin layout changed; requires review')
         html=html.replace(anchor,anchor+'\n<script defer src="/admin/relay.js"></script>',1)
     staged=HERE/'admin_web.install.py';staged.write_text(source);py_compile.compile(str(staged),doraise=True)
-    if not Path('/etc/passwd').read_text().find('astra-relay:')>=0:
+    if 'astra-relay:' not in Path('/etc/passwd').read_text():
         run('useradd','--system','--user-group','--home-dir','/var/lib/astra-relay','--shell','/usr/sbin/nologin','astra-relay')
     run('usermod','-a','-G','astra-relay','ghostgram-license')
     run('install','-d','-m','755','/opt/astra-relay','/etc/astra-relay')

@@ -52,12 +52,17 @@ public final class AstraRelay {
     private static long lastSuccessfulRefresh=-10000;
     private static final Runnable wakeTask=()->wake(null);
 
+    public static void installNativeGate(Context application) {
+        context=application.getApplicationContext();
+        nativeConfigure(0,0,0,"","",0,"","","",networkAvailable());
+    }
+
     public static synchronized void initialize(Context application) {
         if(initialized)return;
         context=application.getApplicationContext();prefs=context.getSharedPreferences("astra_relay",Context.MODE_PRIVATE);
         initialized=true;
         // Install the native gate before Telegram starts any connection.
-        nativeConfigure(0,0,0,"","",0,"","","",networkAvailable());
+        installNativeGate(application);
         queue.postRunnable(()->{
             try{
                 try(InputStream stream=context.getAssets().open("license/lease-public.der")){
@@ -70,11 +75,13 @@ public final class AstraRelay {
         });
         try{
             ConnectivityManager manager=(ConnectivityManager)context.getSystemService(Context.CONNECTIVITY_SERVICE);
-            manager.registerDefaultNetworkCallback(new ConnectivityManager.NetworkCallback(){
+            ConnectivityManager.NetworkCallback callback=new ConnectivityManager.NetworkCallback(){
                 @Override public void onAvailable(Network network){networkChanged();}
                 @Override public void onLost(Network network){networkChanged();}
                 @Override public void onCapabilitiesChanged(Network network,NetworkCapabilities capabilities){networkChanged();}
-            });
+            };
+            if(android.os.Build.VERSION.SDK_INT>=24)manager.registerDefaultNetworkCallback(callback);
+            else manager.registerNetworkCallback(new android.net.NetworkRequest.Builder().addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET).build(),callback);
         }catch(Throwable ignored){}
     }
 
@@ -83,7 +90,13 @@ public final class AstraRelay {
         queue.postRunnable(()->{applyNative();if(networkAvailable())refresh(false);});
     }
 
-    public static void onLicenseChanged(){if(initialized)queue.postRunnable(()->refresh(true));}
+    public static void onLicenseChanged(){
+        if(initialized)queue.postRunnable(()->{
+            // Keystore identity may become ready after initial cache restoration.
+            if(permission==0&&endpoint==null){try{restore();applyNative();}catch(Throwable ignored){}}
+            refresh(true);
+        });
+    }
 
     public static void wake(Runnable finished){
         if(!initialized){if(finished!=null)finished.run();return;}
