@@ -57,8 +57,11 @@ try {
         }
         if ($CopyToPhone) {
             $phonePath = '/sdcard/Download/' + (Split-Path $outputApk -Leaf)
+            $ErrorActionPreference = 'Continue'
             & $adb -s $DeviceSerial push $outputApk $phonePath
-            if ($LASTEXITCODE -ne 0) { throw 'Copy to internal storage failed.' }
+            $deliveryExitCode = $LASTEXITCODE
+            $ErrorActionPreference = 'Stop'
+            if ($deliveryExitCode -ne 0) { throw 'Copy to internal storage failed.' }
             $remoteHash = (& $adb -s $DeviceSerial shell sha256sum $phonePath) -split '\s+' | Select-Object -First 1
             if ($LASTEXITCODE -ne 0 -or $remoteHash -ne (Get-FileHash -LiteralPath $outputApk -Algorithm SHA256).Hash.ToLowerInvariant()) {
                 throw 'Phone copy checksum mismatch.'
@@ -67,8 +70,11 @@ try {
     }
     if ($Install) {
         # No -t: this exercises the same test-only restriction as the normal Android installer.
+        $ErrorActionPreference = 'Continue'
         & $adb -s $DeviceSerial install -r $outputApk
-        if ($LASTEXITCODE -ne 0) { throw 'Normal APK installation failed.' }
+        $deliveryExitCode = $LASTEXITCODE
+        $ErrorActionPreference = 'Stop'
+        if ($deliveryExitCode -ne 0) { throw 'Normal APK installation failed.' }
         $properties = [IO.File]::ReadAllText((Join-Path $projectRoot 'gradle.properties'))
         $versionCode = [regex]::Match($properties, '(?m)^APP_VERSION_CODE=(\d+)').Groups[1].Value
         $installed = & $adb -s $DeviceSerial shell dumpsys package org.ghostgram.messenger
