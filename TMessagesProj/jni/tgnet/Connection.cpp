@@ -19,6 +19,7 @@
 #include "Datacenter.h"
 #include "NativeByteBuffer.h"
 #include "ByteArray.h"
+#include "AstraRelay.h"
 
 thread_local static uint32_t lastConnectionToken = 1;
 
@@ -307,7 +308,7 @@ void Connection::connect() {
     } else {
         ipv6 = 0;
     }
-    uint32_t isStatic = connectionType == ConnectionTypeProxy || !ConnectionsManager::getInstance(currentDatacenter->instanceNum).proxyAddress.empty() ? TcpAddressFlagStatic : 0;
+    uint32_t isStatic = connectionType == ConnectionTypeProxy || (!astragram::astraRelayManaged() && !ConnectionsManager::getInstance(currentDatacenter->instanceNum).proxyAddress.empty()) ? TcpAddressFlagStatic : 0;
     TcpAddress *tcpAddress = nullptr;
     if (isMediaConnectionType(connectionType)) {
         currentAddressFlags = TcpAddressFlagDownload | isStatic;
@@ -365,7 +366,7 @@ void Connection::connect() {
     lastPacketLength = 0;
     wasConnected = false;
     hasSomeDataSinceLastConnect = false;
-    openConnection(hostAddress, hostPort, secret, ipv6 != 0, ConnectionsManager::getInstance(currentDatacenter->instanceNum).currentNetworkType);
+    openConnection(hostAddress, hostPort, secret, ipv6 != 0, ConnectionsManager::getInstance(currentDatacenter->instanceNum).currentNetworkType, connectionType != ConnectionTypeProxy);
     if (connectionType == ConnectionTypeProxy) {
         setTimeout(5);
     } else if (connectionType == ConnectionTypePush) {
@@ -448,13 +449,14 @@ void Connection::sendData(NativeByteBuffer *buff, bool reportAck, bool encrypted
 
     uint8_t useSecret = 0;
     if (!firstPacketSent) {
-        if (!overrideProxyAddress.empty()) {
+        bool legacyProxy = !astragram::astraRelayManaged() || connectionType == ConnectionTypeProxy;
+        if (legacyProxy && !overrideProxyAddress.empty()) {
             if (!overrideProxySecret.empty()) {
                 useSecret = 1;
             } else if (!secret.empty()) {
                 useSecret = 2;
             }
-        } else if (!ConnectionsManager::getInstance(currentDatacenter->instanceNum).proxyAddress.empty() && !ConnectionsManager::getInstance(currentDatacenter->instanceNum).proxySecret.empty()) {
+        } else if (legacyProxy && !ConnectionsManager::getInstance(currentDatacenter->instanceNum).proxyAddress.empty() && !ConnectionsManager::getInstance(currentDatacenter->instanceNum).proxySecret.empty()) {
             useSecret = 1;
         } else if (!secret.empty()) {
             useSecret = 2;

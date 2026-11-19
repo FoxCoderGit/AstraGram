@@ -248,7 +248,7 @@ def route(h, b):
         file = b.DATA / 'releases' / name
         if row is None or not file.is_file(): raise b.Rejected('not_found', 404)
         send_file(h, b, file, 'application/vnd.android.package-archive'); return True
-    if path in ('/admin', '/admin/', '/admin/app.js', '/admin/style.css', '/admin/badges.js') and h.command == 'GET':
+    if path in ('/admin', '/admin/', '/admin/app.js', '/admin/style.css', '/admin/badges.js', '/admin/relay.js') and h.command == 'GET':
         name, mime = ('index.html', 'text/html; charset=utf-8') if path in ('/admin', '/admin/') else (path.rsplit('/', 1)[1], 'text/javascript; charset=utf-8' if path.endswith('.js') else 'text/css; charset=utf-8')
         response(h, 200, (WEB / name).read_bytes(), mime); return True
     if not path.startswith('/admin/api/'): return False
@@ -275,6 +275,9 @@ def route(h, b):
         origin(h, b)
         if not hmac.compare_digest(h.headers.get('X-CSRF-Token', ''), current['csrf']): raise b.Rejected('csrf', 403)
     if path == '/admin/api/session' and h.command == 'GET': response(h, 200, {'csrf': current['csrf']}); return True
+    if path == '/admin/api/relay' and h.command == 'GET':
+        import relay_control
+        response(h, 200, relay_control.request(b, 'GET', '/policy')); return True
     if path == '/admin/api/state' and h.command == 'GET':
         with b.db() as c:
             settings = dict(c.execute('SELECT * FROM owner_settings WHERE id=1').fetchone())
@@ -289,7 +292,20 @@ def route(h, b):
     if h.command != 'POST': raise b.Rejected('not_found', 404)
     if path == '/admin/api/releases/upload': response(h, 200, upload(h, b)); return True
     data = body(h, b)
-    if path == '/admin/api/licenses': result = license_action(b, data)
+    if path == '/admin/api/relay':
+        import relay_control
+        action = data.get('action')
+        if action == 'enabled' and type(data.get('enabled')) is bool:
+            payload = {'enabled': data['enabled']}
+        elif action == 'device' and isinstance(data.get('device'), str) and re.fullmatch(r'[0-9a-f]{64}', data['device']) and type(data.get('denied')) is bool:
+            payload = {'device': data['device'], 'denied': data['denied']}
+        elif action == 'reconnect':
+            payload = {}
+        else:
+            raise b.Rejected('bad_request', 400)
+        result = relay_control.request(b, 'POST', '/reconnect' if action == 'reconnect' else '/policy', payload)
+        with b.db() as c: audit(c, 'relay.' + action, data.get('device', str(data.get('enabled', ''))))
+    elif path == '/admin/api/licenses': result = license_action(b, data)
     elif path == '/admin/api/policy':
         require = data.get('require_key')
         if type(require) is not bool: raise b.Rejected('bad_request', 400)

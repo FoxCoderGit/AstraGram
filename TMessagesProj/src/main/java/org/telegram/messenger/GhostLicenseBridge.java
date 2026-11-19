@@ -25,6 +25,15 @@ public final class GhostLicenseBridge {
         if(!enforced())return null;
         try{return (String)Class.forName("org.ghostgram.messenger.license.LicenseManager").getMethod("musicRelayProof",String.class).invoke(null,nonce);}catch(Throwable ignored){return null;}
     }
+    public static String relayDeviceKey(){
+        try{return (String)Class.forName("org.ghostgram.messenger.license.LicenseManager").getMethod("relayDeviceKey").invoke(null);}catch(Throwable ignored){return null;}
+    }
+    public static String relayPolicyProof(String nonce){
+        try{return (String)Class.forName("org.ghostgram.messenger.license.LicenseManager").getMethod("relayPolicyProof",String.class).invoke(null,nonce);}catch(Throwable ignored){return null;}
+    }
+    public static String relayConnectionProof(String token,String ip,int port,long timestamp){
+        try{return (String)Class.forName("org.ghostgram.messenger.license.LicenseManager").getMethod("relayConnectionProof",String.class,String.class,int.class,long.class).invoke(null,token,ip,port,timestamp);}catch(Throwable ignored){return null;}
+    }
     private static boolean enforced() {
         return ApplicationLoader.applicationContext != null && "org.ghostgram.messenger".equals(ApplicationLoader.applicationContext.getPackageName());
     }

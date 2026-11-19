@@ -12,6 +12,9 @@
 #include <sys/epoll.h>
 #include <netinet/in.h>
 #include <string>
+#include <memory>
+
+namespace astragram { class AstraRelayTransport; }
 
 class NativeByteBuffer;
 class ConnectionsManager;
@@ -27,7 +30,7 @@ public:
 
     void writeBuffer(uint8_t *data, uint32_t size);
     void writeBuffer(NativeByteBuffer *buffer);
-    void openConnection(std::string address, uint16_t port, std::string secret, bool ipv6, int32_t networkType);
+    void openConnection(std::string address, uint16_t port, std::string secret, bool ipv6, int32_t networkType, bool relayEligible = true);
     void setTimeout(time_t timeout);
     time_t getTimeout();
     bool isDisconnected();
@@ -58,6 +61,9 @@ private:
     struct sockaddr_in socketAddress;
     struct sockaddr_in6 socketAddress6;
     int socketFd = -1;
+    std::shared_ptr<astragram::AstraRelayTransport> relayTransport;
+    bool relayReady = false;
+    int64_t relayOpenedAt = 0;
     time_t timeout = 12;
     bool onConnectedSent = false;
     int64_t lastEventTime = 0;

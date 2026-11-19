@@ -31,6 +31,7 @@
 #include "BuffersStorage.h"
 #include "Connection.h"
 #include "TLSHello.h"
+#include "AstraRelay.h"
 #include <random>
 
 #ifndef EPOLLRDHUP
@@ -47,6 +48,7 @@ ConnectionSocket::ConnectionSocket(int32_t instance) {
 }
 
 ConnectionSocket::~ConnectionSocket() {
+    if (relayTransport) relayTransport->stop();
     if (outgoingByteStream != nullptr) {
         delete outgoingByteStream;
         outgoingByteStream = nullptr;
@@ -65,7 +67,7 @@ ConnectionSocket::~ConnectionSocket() {
     }
 }
 
-void ConnectionSocket::openConnection(std::string address, uint16_t port, std::string secret, bool ipv6, int32_t networkType) {
+void ConnectionSocket::openConnection(std::string address, uint16_t port, std::string secret, bool ipv6, int32_t networkType, bool relayEligible) {
     if(ConnectionsManager::getInstance(instanceNum).isSessionDisabled())return;
     currentNetworkType = networkType;
     isIpv6 = ipv6;
@@ -87,6 +89,9 @@ void ConnectionSocket::openConnection(std::string address, uint16_t port, std::s
         proxyPort = ConnectionsManager::getInstance(instanceNum).proxyPort;
         proxySecret = &ConnectionsManager::getInstance(instanceNum).proxySecret;
     }
+    std::string direct;
+    bool useRelayTransport = relayEligible && astragram::astraRelayManaged();
+    if (useRelayTransport) proxyAddress = &direct;
 
     if (!proxyAddress->empty()) {
         if (LOGS_ENABLED) DEBUG_D("connection(%p) connecting via proxy %s:%d secret[%d]", this, proxyAddress->c_str(), proxyPort, (int) proxySecret->size());
@@ -203,6 +208,15 @@ void ConnectionSocket::openConnection(std::string address, uint16_t port, std::s
         }
     }
 
+    if (useRelayTransport) {
+        int localSocket = -1;
+        relayTransport = astragram::AstraRelayTransport::open(address, port, localSocket);
+        if (!relayTransport) { closeSocket(1, -1); return; }
+        close(socketFd);
+        socketFd = localSocket;
+        relayReady = false;
+        relayOpenedAt = ConnectionsManager::getInstance(instanceNum).getCurrentTimeMonotonicMillis();
+    }
     openConnectionInternal(ipv6);
 }
 
@@ -210,7 +224,7 @@ void ConnectionSocket::openConnectionInternal(bool ipv6) {
     if(ConnectionsManager::getInstance(instanceNum).isSessionDisabled()){dropConnection();return;}
     int epolFd = ConnectionsManager::getInstance(instanceNum).epolFd;
     int yes = 1;
-    if (setsockopt(socketFd, IPPROTO_TCP, TCP_NODELAY, &yes, sizeof(int))) {
+    if (!relayTransport && setsockopt(socketFd, IPPROTO_TCP, TCP_NODELAY, &yes, sizeof(int))) {
         if (LOGS_ENABLED) DEBUG_E("connection(%p) set TCP_NODELAY failed", this);
     }
 #ifdef DEBUG_VERSION
@@ -229,10 +243,11 @@ void ConnectionSocket::openConnectionInternal(bool ipv6) {
         return;
     }
 
-    if (connect(socketFd, (ipv6 ? (sockaddr *) &socketAddress6 : (sockaddr *) &socketAddress), (socklen_t) (ipv6 ? sizeof(sockaddr_in6) : sizeof(sockaddr_in))) == -1 && errno != EINPROGRESS) {
+    if (!relayTransport && connect(socketFd, (ipv6 ? (sockaddr *) &socketAddress6 : (sockaddr *) &socketAddress), (socklen_t) (ipv6 ? sizeof(sockaddr_in6) : sizeof(sockaddr_in))) == -1 && errno != EINPROGRESS) {
         closeSocket(1, -1);
     } else {
         eventMask.events = EPOLLOUT | EPOLLIN | EPOLLRDHUP | EPOLLERR | EPOLLET;
+        if (relayTransport && !relayReady) eventMask.events &= ~EPOLLOUT;
         eventMask.data.ptr = eventObject;
         if (epoll_ctl(epolFd, EPOLL_CTL_ADD, socketFd, &eventMask) != 0) {
             if (LOGS_ENABLED) DEBUG_E("connection(%p) epoll_ctl, adding socket failed", this);
@@ -260,6 +275,8 @@ int32_t ConnectionSocket::checkSocketError(int32_t *error) {
 }
 
 void ConnectionSocket::closeSocket(int32_t reason, int32_t error) {
+    if (relayTransport) { relayTransport->stop(); relayTransport.reset(); }
+    relayReady = false;
     lastEventTime = ConnectionsManager::getInstance(instanceNum).getCurrentTimeMonotonicMillis();
     ConnectionsManager::getInstance(instanceNum).detachConnection(this);
     if (socketFd >= 0) {
@@ -306,6 +323,15 @@ void ConnectionSocket::onEvent(uint32_t events) {
                     return;
                 }
                 if (readCount > 0) {
+                    if (relayTransport && !relayReady) {
+                        if (buffer->bytes()[0] != 0xa7) { closeSocket(1, -1); return; }
+                        relayReady = true;
+                        lastEventTime = ConnectionsManager::getInstance(instanceNum).getCurrentTimeMonotonicMillis();
+                        adjustWriteOp();
+                        readCount--;
+                        if (!readCount) continue;
+                        memmove(buffer->bytes(), buffer->bytes() + 1, readCount);
+                    }
                     buffer->limit((uint32_t) readCount);
                     lastEventTime = ConnectionsManager::getInstance(instanceNum).getCurrentTimeMonotonicMillis();
                     if (proxyAuthState == 11) {
@@ -693,6 +719,7 @@ void ConnectionSocket::adjustWriteOp() {
     if (proxyAuthState == 0 && (outgoingByteStream->hasData() || !onConnectedSent) || proxyAuthState == 1 || proxyAuthState == 3 || proxyAuthState == 5 || proxyAuthState == 10) {
         eventMask.events |= EPOLLOUT;
     }
+    if (relayTransport && !relayReady) eventMask.events &= ~EPOLLOUT;
     eventMask.data.ptr = eventObject;
     if (epoll_ctl(ConnectionsManager::getInstance(instanceNum).epolFd, EPOLL_CTL_MOD, socketFd, &eventMask) != 0) {
         if (LOGS_ENABLED) DEBUG_E("connection(%p) epoll_ctl, modify socket failed", this);
@@ -711,6 +738,7 @@ time_t ConnectionSocket::getTimeout() {
 }
 
 bool ConnectionSocket::checkTimeout(int64_t now) {
+    if (relayTransport && !relayReady && now - relayOpenedAt < 45000) return false;
     if (timeout != 0 && (now - lastEventTime) > (int64_t) timeout * 1000) {
         if (!onConnectedSent || hasPendingRequests()) {
             closeSocket(2, 0);

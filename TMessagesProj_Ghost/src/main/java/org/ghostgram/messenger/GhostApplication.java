@@ -38,6 +38,7 @@ public class GhostApplication extends ApplicationLoader {
             if(previousHandler!=null)previousHandler.uncaughtException(thread,error);
         });
         org.ghostgram.messenger.license.LicenseManager.initialize(this);
+        org.telegram.messenger.AstraRelay.initialize(this);
         org.telegram.messenger.GhostBadges.refresh();
 
         // This standalone package cannot use Telegram's FCM registration. Keep the

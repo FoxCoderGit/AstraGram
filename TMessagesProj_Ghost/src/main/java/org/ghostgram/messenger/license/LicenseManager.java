@@ -193,6 +193,7 @@ public final class LicenseManager {
     }
 
     private static void authorized() {
+        org.telegram.messenger.AstraRelay.onLicenseChanged();
         synchronized (LicenseManager.class) {
             if (!pluginsStarted) {
                 pluginsStarted = true;
@@ -208,6 +209,30 @@ public final class LicenseManager {
         signature.update(("ghostgram-music-v1\n"+nonce).getBytes(StandardCharsets.UTF_8));
         return new JSONObject().put("nonce",nonce).put("public_key",b64(device.getPublic().getEncoded())).put("proof",b64(signature.sign()))
                 .put("lease",OwnerControl.bypass()?OwnerControl.gameLease():new JSONObject(prefs.getString("lease",""))).toString();
+    }
+
+    public static synchronized String relayDeviceKey() throws Exception {
+        if(device==null)throw new SecurityException("Device identity unavailable");
+        return b64(device.getPublic().getEncoded());
+    }
+
+    public static synchronized String relayPolicyProof(String nonce) throws Exception {
+        if(!allowed()||device==null||nonce==null||!nonce.matches("[0-9a-f]{64}"))throw new SecurityException("Relay identity unavailable");
+        JSONObject lease=OwnerControl.bypass()?OwnerControl.gameLease():new JSONObject(prefs.getString("lease",""));
+        String payloadHash=hex(MessageDigest.getInstance("SHA-256").digest(unb64(lease.getString("payload"))));
+        Signature proof=Signature.getInstance("SHA256withECDSA");proof.initSign(device.getPrivate());
+        proof.update(("astrarelay-policy-v1\n"+nonce+"\n"+payloadHash).getBytes(StandardCharsets.UTF_8));
+        return new JSONObject().put("nonce",nonce).put("public_key",relayDeviceKey()).put("proof",b64(proof.sign())).put("lease",lease).toString();
+    }
+
+    public static synchronized String relayConnectionProof(String token,String ip,int port,long timestamp) throws Exception {
+        if(!allowed()||device==null||token==null||token.length()>4096||!token.matches("[A-Za-z0-9_.-]+")
+                ||ip==null||ip.length()>64||!ip.matches("[0-9a-fA-F:.]+")||port<1||port>65535)throw new SecurityException("Invalid relay proof request");
+        byte[] random=new byte[32];new java.security.SecureRandom().nextBytes(random);
+        String nonce=hex(random),stamp=Long.toString(timestamp),tokenHash=hex(MessageDigest.getInstance("SHA-256").digest(token.getBytes(StandardCharsets.UTF_8)));
+        Signature proof=Signature.getInstance("SHA256withECDSA");proof.initSign(device.getPrivate());
+        proof.update(("astrarelay-connect-v1\n"+nonce+"\n"+stamp+"\n"+ip+"\n"+port+"\n"+tokenHash).getBytes(StandardCharsets.UTF_8));
+        return "X-Astra-Nonce: "+nonce+"\r\nX-Astra-Time: "+stamp+"\r\nX-Astra-Proof: "+b64(proof.sign())+"\r\n";
     }
     static JSONObject verify(JSONObject lease, String nonce) throws Exception {
         byte[] payload = unb64(lease.getString("payload"));
