@@ -41,6 +41,7 @@ public final class AstraRelay {
     private static final AtomicInteger networkGeneration=new AtomicInteger();
     private static long countryUntil;
     private static String country="";
+    private static String networkIdentity="",lastDiagnostic="";
     private static Context context;
     private static SharedPreferences prefs;
     private static PublicKey policyKey;
@@ -88,8 +89,15 @@ public final class AstraRelay {
         }catch(Throwable ignored){}
     }
 
-    private static void networkChanged(){
+    private static synchronized void networkChanged(){
         if(!initialized)return;
+        String identity="";
+        try{
+            ConnectivityManager manager=(ConnectivityManager)context.getSystemService(Context.CONNECTIVITY_SERVICE);
+            identity=String.valueOf(manager.getActiveNetwork())+":"+networkAvailable()+":"+GhostNetworkEnvironment.vpnActive(context);
+        }catch(Exception ignored){}
+        if(identity.equals(networkIdentity))return;
+        networkIdentity=identity;
         networkGeneration.incrementAndGet();
         nativeSetRelayEligible(false);
         queue.postRunnable(()->{countryUntil=0;applyNative();if(networkAvailable())refresh(false);});
@@ -193,7 +201,7 @@ public final class AstraRelay {
     }
 
     private static boolean updateEligibility(){
-        if(GhostNetworkEnvironment.vpnActive(context)){nativeSetRelayEligible(false);return false;}
+        if(GhostNetworkEnvironment.vpnActive(context)){diagnostic("direct: VPN");nativeSetRelayEligible(false);return false;}
         int generation=networkGeneration.get();
         long now=SystemClock.elapsedRealtime();
         if(now>=countryUntil){
@@ -208,12 +216,30 @@ public final class AstraRelay {
                 }
                 if(!country.matches("[A-Z]{2}"))throw new java.io.IOException();
                 countryUntil=SystemClock.elapsedRealtime()+HOUR;
-            }catch(Exception ignored){country="";countryUntil=0;}
+            }catch(Exception error){
+                country="";countryUntil=0;
+                diagnostic("country lookup failed: "+error.getClass().getSimpleName());
+                try{
+                    if(connection!=null)connection.disconnect();
+                    connection=(HttpsURLConnection)new URL("https://ipwho.is/").openConnection();
+                    connection.setConnectTimeout(5000);connection.setReadTimeout(5000);connection.setInstanceFollowRedirects(false);
+                    if(connection.getResponseCode()==200)try(InputStream stream=connection.getInputStream()){
+                        JSONObject response=new JSONObject(new String(read(stream,16384),StandardCharsets.UTF_8));
+                        String code=response.optString("country_code","");
+                        if(response.optBoolean("success",false)&&code.matches("[A-Z]{2}")){country=code;countryUntil=SystemClock.elapsedRealtime()+HOUR;}
+                    }
+                }catch(Exception fallback){diagnostic("fallback lookup failed: "+fallback.getClass().getSimpleName());}
+            }
             finally{if(connection!=null)connection.disconnect();}
         }
         boolean eligible=generation==networkGeneration.get()&&"RU".equals(country)&&!GhostNetworkEnvironment.vpnActive(context);
         nativeSetRelayEligible(eligible);
+        diagnostic("country="+(country.isEmpty()?"unknown":country)+" relayEligible="+eligible);
         return eligible;
+    }
+
+    private static synchronized void diagnostic(String state){
+        if(!state.equals(lastDiagnostic)){lastDiagnostic=state;android.util.Log.i("AstraRelay",state);}
     }
 
     private static JSONObject verify(JSONObject envelope,String nonce)throws Exception{
@@ -299,6 +325,7 @@ public final class AstraRelay {
     @Keep
     public static void onNativeRelayEvent(int type,long delay){
         if(!initialized)return;
+        if(type!=0)diagnostic("transport event="+type);
         if(type==0&&!accessRequestQueued.compareAndSet(false,true))return;
         if(type==2)denialSequence.incrementAndGet();
         queue.postRunnable(()->{
