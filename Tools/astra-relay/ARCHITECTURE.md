@@ -1,5 +1,7 @@
 # AstraRelay
 
+Build 131 deduplicates network callbacks by active network identity, connectivity and VPN state. A failed Country.is lookup falls back to `https://ipwho.is/` (`success` and `country_code`), with the same one-hour cache. An unknown exit remains ineligible. Operational logcat diagnostics use the AstraRelay tag and contain state and exception class names, never tokens, IP addresses or account identifiers.
+
 Scope: native tgnet TCP connections, including generic RPC, media/CDN uploads and downloads, and push connections. Voice/video WebRTC media is excluded by the owner's choice. No device-wide network interception, VPN, SOCKS or MTProto-proxy protocol is used.
 
 Build 130 adds a separate network eligibility gate: active Android VPN transports use direct Telegram, as do public IP addresses outside Russia. Country is looked up via `https://api.country.is/` over verified HTTPS, without account identifiers or explicit IP parameters. The response is cached for one hour and invalidated on network changes. Lookup failure/unknown country also uses direct Telegram, and is retried. This gate does not change administrative denial or technical cooldown deadlines. Native workers are woken when eligibility changes, and existing MTProto sessions reconnect through tgnet's request retry mechanism. IP country is an estimate of the network exit, not a claim about the user's physical location.
