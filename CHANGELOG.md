@@ -1,5 +1,9 @@
 # Changelog
 
+## 13.2.2-astra.134
+
+- Deliver reaction notifications for background Telegram accounts even when their previously opened dialog ID is still cached. Suppress the alert only if that chat belongs to the account currently visible on screen.
+
 ## 13.2.2-astra.133
 
 - Move AstraRelay control and WSS identity to vpn.codebyfox.ru:9446; resolve the signed hostname through DNS while retaining certificate pinning.

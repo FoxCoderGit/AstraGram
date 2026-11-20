@@ -97,6 +97,12 @@ public class GhostReactionPolicyTest {
             throw new AssertionError("Screen off or another chat must allow notification delivery");
         checks++;
         GhostReactionEvents delivery = new GhostReactionEvents(3, java.util.Collections.emptyList());
+        if (GhostReactionPolicy.isChatVisible(false, true, 200, 200, 0, 1))
+            throw new AssertionError("A stale chat on another account must not suppress its reaction notifications");
+        checks++;
+        if (!GhostReactionPolicy.isChatVisible(false, true, 200, 200, 1, 1))
+            throw new AssertionError("Suppress a reaction only in the currently visible account's chat");
+        checks++;
         if (delivery.contains("new") || !delivery.record("new") || delivery.record("new"))
             throw new AssertionError("Deduplicate only after delivery has been recorded");
         checks++;

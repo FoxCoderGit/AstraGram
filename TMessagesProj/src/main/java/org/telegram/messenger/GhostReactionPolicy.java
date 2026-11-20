@@ -18,6 +18,11 @@ public final class GhostReactionPolicy {
         return !paused && screenOn && openedDialog == dialog;
     }
 
+    public static boolean isChatVisible(boolean paused, boolean screenOn, long openedDialog, long dialog,
+            int account, int visibleAccount) {
+        return account == visibleAccount && isChatVisible(paused, screenOn, openedDialog, dialog);
+    }
+
     public static ArrayList<TLRPC.MessagePeerReaction> newReactions(long selfId, TLRPC.Message message,
             TLRPC.TL_messageReactions previous, TLRPC.TL_messageReactions current, int liveUpdateTime) {
         ArrayList<TLRPC.MessagePeerReaction> result = new ArrayList<>();

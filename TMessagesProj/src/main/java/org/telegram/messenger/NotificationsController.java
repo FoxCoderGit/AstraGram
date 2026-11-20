@@ -747,7 +747,7 @@ public class NotificationsController extends BaseController implements Notificat
                 return;
             }
             if (GhostReactionPolicy.isChatVisible(ApplicationLoader.mainInterfacePaused,
-                    ApplicationLoader.isScreenOn, openedDialogId, dialogId)) {
+                    ApplicationLoader.isScreenOn, openedDialogId, dialogId, currentAccount, UserConfig.selectedAccount)) {
                 android.util.Log.i("GhostReactions", "suppressed: chat visible in foreground");
                 rememberGhostReaction(eventKey);
                 return;
