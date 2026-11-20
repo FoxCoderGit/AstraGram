@@ -159,7 +159,10 @@ public final class GhostStickerOwner {
                     StringBuilder text=new StringBuilder();
                     for(TLRPC.User user:results.users) {
                         if (usable(user,id)) { save(user);finish(user);return; }
-                        if (user.id == id) append(text, "Username: " + UserObject.getUserName(user));
+                        if (user.id == id) {
+                            String username = UserObject.getPublicUsername(user, false);
+                            if (username != null && !username.isEmpty()) append(text, "@" + username);
+                        }
                     }
                     for(TLRPC.BotInlineResult item:results.results){
                         if(text.length()>32768)break;
