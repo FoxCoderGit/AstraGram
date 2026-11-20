@@ -1,5 +1,11 @@
 # Changelog
 
+## 13.2.2-astra.131
+
+- Keep relay eligibility stable when Android repeats capability events for the same network.
+- Fall back to a second HTTPS country lookup when Country.is fails; retain direct routing for VPN, non-Russian and unknown exits.
+- Add relay diagnostics for country eligibility, access policy, technical cooldown and tunnel connection events without logging account data or credentials.
+
 ## 13.2.2-astra.130
 
 - Start media dragging in selection mode only from a selected message.
