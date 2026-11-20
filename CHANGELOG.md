@@ -5,6 +5,7 @@
 - Keep relay eligibility stable when Android repeats capability events for the same network.
 - Fall back to a second HTTPS country lookup when Country.is fails; retain direct routing for VPN, non-Russian and unknown exits.
 - Add relay diagnostics for country eligibility, access policy, technical cooldown and tunnel connection events without logging account data or credentials.
+- Clear the previous network gate's technical cooldown once on upgrade; preserve administrative denials and the one-hour retry policy for subsequent failures.
 
 ## 13.2.2-astra.130
 
