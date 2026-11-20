@@ -156,8 +156,8 @@ public final class AstraRelay {
         long now=SystemClock.elapsedRealtime();
         if(busy||!networkAvailable()){schedule();return;}
         if(!updateEligibility()){scheduleAfter(60000);return;}
-        if(deniedDeadline>now){permission=2;applyNative();schedule();return;}
-        if(!force&&retryDeadline>now){schedule();return;}
+        if(deniedDeadline>now){diagnostic("direct: administrative denial");permission=2;applyNative();schedule();return;}
+        if(!force&&retryDeadline>now){diagnostic("direct: technical cooldown");schedule();return;}
         if(!force&&permission==1&&Math.min(accessDeadline,tokenDeadline)-now>60000){schedule();return;}
         if(!GhostLicenseBridge.allowed()||policyKey==null){scheduleAfter(60000);return;}
         busy=true;int sequence=denialSequence.get();
@@ -173,6 +173,7 @@ public final class AstraRelay {
             serverOffsetMs=grant.getLong("issued_at")*1000L-now;
             accessDeadline=now+(grant.getLong("until")-grant.getLong("issued_at"))*1000L;
             permission=grant.getBoolean("allowed")?1:2;
+            diagnostic("access allowed="+(permission==1));
             if(permission==1){
                 endpoint=validateEndpoint(grant.getJSONObject("endpoint"));token=grant.getString("token");
                 if(token.length()>4096||!token.matches("[A-Za-z0-9_.-]+"))throw new SecurityException("Invalid token");
@@ -187,6 +188,7 @@ public final class AstraRelay {
             lastSuccessfulRefresh=now;
             saveDeadlines();applyNative();
         }catch(Throwable ignored){
+            diagnostic("access failed: "+ignored.getClass().getSimpleName());
             // A network/TLS/authorization error is never an administrative denial.
             // tgnet owns the initial 30-second recovery interval.
             if(accessDeadline<=SystemClock.elapsedRealtime()||tokenDeadline<=SystemClock.elapsedRealtime())permission=0;
