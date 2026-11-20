@@ -1,5 +1,9 @@
 # Changelog
 
+## 13.2.2-astra.137
+
+- Use more profile hints from inline bot results and look up existing bot replies when inline search returns no profile. Profile lookup never sends a message to the bot chat.
+
 ## 13.2.2-astra.136
 
 - Open profiles from `tg://user?id=…` and `tg://openmessage?user_id=…` using the same verified ID lookup as sticker packs. Links with a message ID still open the message.

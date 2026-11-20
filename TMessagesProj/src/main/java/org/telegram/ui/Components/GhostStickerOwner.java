@@ -60,6 +60,7 @@ public final class GhostStickerOwner {
         final long owner;
         final boolean stickerCandidate;
         final boolean allowBot;
+        boolean searchedBotHistory;
         final java.util.HashSet<String> triedNames=new java.util.HashSet<>();
         final Runnable timeout=()->{failure="Бот не ответил вовремя. Можно повторить поиск позже.";finish(null);};
         final Runnable inlineTimeout=this::onInlineTimeout;
@@ -112,7 +113,7 @@ public final class GhostStickerOwner {
             if (f.getParentActivity() == null || f.isFinished) return;
             f.showDialog(new AlertDialog.Builder(f.getParentActivity(), f.getResourceProvider())
                     .setTitle("Поиск профиля")
-                    .setMessage("Telegram не вернул профиль по этому ID. Отправить ID боту @usinfobot для поиска?")
+                    .setMessage("Telegram не вернул профиль по этому ID. Проверить его через inline-поиск @usinfobot и существующие ответы бота?")
                     .setPositiveButton("Найти через бота", (dialog, which) -> {
                         if (!f.isFinished && f.getParentActivity() != null
                                 && UserConfig.getInstance(account).getClientUserId() == owner) {
@@ -148,25 +149,86 @@ public final class GhostStickerOwner {
                 inline.query=Long.toString(id);inline.offset="";
                 AndroidUtilities.runOnUIThread(inlineTimeout,10000);
                 token=cm.sendRequest(inline,(result,err)->AndroidUtilities.runOnUIThread(()->{
-                    if(stopped())return;
+                    if (stopped() || searchedBotHistory) return;
                     AndroidUtilities.cancelRunOnUIThread(inlineTimeout);
                     if(err!=null||!(result instanceof TLRPC.messages_BotResults)){
                         if(flood(err)){finish(null);return;}
-                        failure="Не удалось получить inline-ответ @usinfobot. Повторите поиск позже.";finish(null);return;
+                        searchExistingBotReplies();return;
                     }
                     TLRPC.messages_BotResults results=(TLRPC.messages_BotResults)result;
-                    for(TLRPC.User user:results.users)if(usable(user,id)){save(user);finish(user);return;}
                     StringBuilder text=new StringBuilder();
+                    for(TLRPC.User user:results.users) {
+                        if (usable(user,id)) { save(user);finish(user);return; }
+                        if (user.id == id) append(text, "Username: " + UserObject.getUserName(user));
+                    }
                     for(TLRPC.BotInlineResult item:results.results){
                         if(text.length()>32768)break;
                         append(text,item.url);append(text,item.description);append(text,item.title);
                         if(item.send_message!=null){
                             append(text,item.send_message.message);
+                            append(text,item.send_message.url);
                             for(TLRPC.MessageEntity entity:item.send_message.entities)append(text,entity.url);
                             appendKeyboard(text,item.send_message.reply_markup);
                         }
                     }
                     resolveCandidates(GhostProfileLookupParser.usernames(text.toString()),0);
+                }));
+            }));
+        }
+        /** Read existing replies if inline mode returned no usable profile. This never sends a message. */
+        void searchExistingBotReplies() {
+            if (stopped()) return;
+            if (resolvedBot == null || searchedBotHistory) { finish(null); return; }
+            searchedBotHistory = true;
+            TLRPC.TL_messages_search request = new TLRPC.TL_messages_search();
+            request.peer = mc.getInputPeer(resolvedBot.id);
+            request.q = Long.toString(id);
+            request.filter = new TLRPC.TL_inputMessagesFilterEmpty();
+            request.limit = 10;
+            token = cm.sendRequest(request, (response, error) -> AndroidUtilities.runOnUIThread(() -> {
+                if (stopped()) return;
+                if (error != null || !(response instanceof TLRPC.messages_Messages)) {
+                    flood(error);finish(null);return;
+                }
+                TLRPC.messages_Messages history = (TLRPC.messages_Messages) response;
+                for (TLRPC.User user : history.users) {
+                    if (usable(user,id)) { save(user);finish(user);return; }
+                }
+                StringBuilder hints = new StringBuilder();
+                int contextMessageId = 0;
+                for (TLRPC.Message reply : history.messages) {
+                    if (!GhostBotReplyPolicy.fresh(reply, resolvedBot.id, 0)) continue;
+                    append(hints, reply.message);
+                    if (reply.entities != null) {
+                        for (TLRPC.MessageEntity entity : reply.entities) append(hints, entity.url);
+                    }
+                    boolean targetButton = appendKeyboard(hints, reply.reply_markup);
+                    boolean forwardedTarget = reply.fwd_from != null && reply.fwd_from.from_id != null
+                            && reply.fwd_from.from_id.user_id == id;
+                    if (contextMessageId == 0 && (forwardedTarget || targetButton || GhostBotReplyPolicy.mentions(reply,id))) {
+                        contextMessageId = reply.id;
+                    }
+                }
+                ArrayList<String> names = GhostProfileLookupParser.usernames(hints.toString());
+                if (contextMessageId == 0) { resolveCandidates(names,0);return; }
+                TLRPC.TL_inputUserFromMessage input = new TLRPC.TL_inputUserFromMessage();
+                input.peer = request.peer;
+                input.msg_id = contextMessageId;
+                input.user_id = id;
+                TLRPC.TL_users_getUsers lookup = new TLRPC.TL_users_getUsers();
+                lookup.id.add(input);
+                token = cm.sendRequest(lookup, (result, lookupError) -> AndroidUtilities.runOnUIThread(() -> {
+                    if (stopped()) return;
+                    if (result instanceof Vector) {
+                        for (Object value : ((Vector<?>) result).objects) {
+                            if (value instanceof TLRPC.User && usable((TLRPC.User) value,id)) {
+                                TLRPC.User user = (TLRPC.User) value;
+                                save(user);finish(user);return;
+                            }
+                        }
+                    }
+                    if (flood(lookupError)) finish(null);
+                    else resolveCandidates(names,0);
                 }));
             }));
         }
@@ -183,7 +245,7 @@ public final class GhostStickerOwner {
         void resolveCandidates(ArrayList<String> names,int index){
             if(stopped())return;
             if(index>=names.size()){
-                finish(null);return;
+                searchExistingBotReplies();return;
             }
             if(!triedNames.add(names.get(index))){resolveCandidates(names,index+1);return;}
             TLRPC.TL_contacts_resolveUsername request=new TLRPC.TL_contacts_resolveUsername();request.username=names.get(index);
@@ -206,7 +268,10 @@ public final class GhostStickerOwner {
             return false;
         }
         void onInlineTimeout(){
-            if(!stopped()){failure="Inline-бот не ответил вовремя. Повторите поиск позже.";finish(null);}
+            if (!stopped()) {
+                if (token != 0) cm.cancelRequest(token,true);
+                searchExistingBotReplies();
+            }
         }
         boolean flood(TLRPC.TL_error error){
             if(error!=null&&error.text!=null&&error.text.startsWith("FLOOD_")){
