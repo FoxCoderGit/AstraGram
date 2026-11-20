@@ -150,11 +150,15 @@ public final class AstraRelay {
             }
         }
         if(deniedDeadline>now){permission=2;accessDeadline=deniedDeadline;token="";}
-        // One-time recovery from retries persisted by the old, unstable network gate.
+        // Fetch a fresh signed endpoint once when migrating to the new relay domain.
         // Never shorten an administrative denial or subsequent technical cooldowns.
-        if(prefs.getInt("eligibility_revision",0)<2){
-            if(deniedDeadline<=now){retryDeadline=0;diagnostic("legacy technical cooldown cleared");}
-            prefs.edit().putInt("eligibility_revision",2).apply();
+        if(prefs.getInt("eligibility_revision",0)<3){
+            if(deniedDeadline<=now){
+                retryDeadline=0;permission=0;endpoint=null;token="";accessDeadline=tokenDeadline=0;
+                prefs.edit().remove("grant").apply();
+                diagnostic("relay domain migration: fresh access required");
+            }
+            prefs.edit().putInt("eligibility_revision",3).apply();
             saveDeadlines();
         }
     }
