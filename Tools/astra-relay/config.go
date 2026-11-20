@@ -37,6 +37,7 @@ type Config struct {
 }
 
 type Policy struct {
+    BlockMedia bool `json:"block_media"`
 	Revision uint64          `json:"revision"`
 	Enabled  bool            `json:"enabled"`
 	Denied   map[string]bool `json:"denied_devices"`
@@ -85,6 +86,10 @@ func loadConfig(path string) (Config, error) {
 		return c, errors.New("invalid connection limits")
 	}
 	return c, nil
+}
+
+func (p Policy) blocksTraffic(traffic string) bool {
+    return p.BlockMedia && traffic != "voice" && traffic != "control"
 }
 
 func atomicJSON(path string, value any) error {

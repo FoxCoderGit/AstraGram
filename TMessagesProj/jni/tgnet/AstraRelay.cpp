@@ -204,20 +204,20 @@ void setAstraRelayEligible(bool eligible) {
     for (const auto& transport : wake) transport->wake();
 }
 
-AstraRelayTransport::AstraRelayTransport(const std::string& address, uint16_t port, int peer, int wake)
-    : address(address), port(port), peerFd(peer), wakeFd(wake) {}
+AstraRelayTransport::AstraRelayTransport(const std::string& address, uint16_t port, int peer, int wake, const char* traffic)
+    : address(address), port(port), traffic(traffic), peerFd(peer), wakeFd(wake) {}
 AstraRelayTransport::~AstraRelayTransport() { stop(); close(peerFd); close(wakeFd); }
 void AstraRelayTransport::wake() { uint64_t value = 1; (void) ::write(wakeFd, &value, sizeof(value)); }
 void AstraRelayTransport::stop() { stopping.store(true); wake(); }
 void AstraRelayTransport::notify(int event, int64_t delay) { RelayEvent receiver; { std::lock_guard<std::mutex> lock(configurationMutex); receiver = eventReceiver; } if (receiver) receiver(event, delay); }
 
-std::shared_ptr<AstraRelayTransport> AstraRelayTransport::open(const std::string& address, uint16_t port, int& localSocket) {
+std::shared_ptr<AstraRelayTransport> AstraRelayTransport::open(const std::string& address, uint16_t port, int& localSocket, const char* traffic) {
     localSocket = -1;
     int pair[2];
     if (socketpair(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC | SOCK_NONBLOCK, 0, pair) != 0) return {};
     int wake = eventfd(0, EFD_CLOEXEC | EFD_NONBLOCK);
     if (wake < 0) { close(pair[0]); close(pair[1]); return {}; }
-    auto transport = std::shared_ptr<AstraRelayTransport>(new AstraRelayTransport(address,port,pair[1],wake));
+    auto transport = std::shared_ptr<AstraRelayTransport>(new AstraRelayTransport(address,port,pair[1],wake,traffic));
     { std::lock_guard<std::mutex> lock(configurationMutex); activeLocked(); transports.push_back(transport); }
     localSocket = pair[0];
     std::thread([transport] { transport->run(); }).detach();
@@ -254,11 +254,12 @@ int AstraRelayTransport::connectTCP(const std::string& address, uint16_t port, i
 }
 
 void AstraRelayTransport::run() {
+    int64_t mediaRetryAt = 0;
     while (!stopping.load()) {
         Snapshot current = snapshot();
         if (!current.config.managed) break;
         if (!current.config.networkAvailable || current.route == RelayRoute::WaitingForAccess) { wait(-1,0,mono()+1000); continue; }
-        bool relay = current.route == RelayRoute::Relay;
+        bool relay = current.route == RelayRoute::Relay && mono() >= mediaRetryAt;
         if (relay && (current.config.ips.empty() || current.config.pins.empty() || current.config.token.empty() || current.config.port == 0
                 || current.config.path != "/v1/tunnel" || !cleanHeader(current.config.host) || !cleanHeader(current.config.token))) {
             { std::lock_guard<std::mutex> lock(configurationMutex); policy.attempting(mono()); }
@@ -307,6 +308,7 @@ void AstraRelayTransport::run() {
             std::string request = "GET " + current.config.path + "?ip=" + address + "&port=" + std::to_string(port) + " HTTP/1.1\r\nHost: "
                 + current.config.host + ":" + std::to_string(current.config.port)
                 + "\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Version: 13\r\nSec-WebSocket-Protocol: astrarelay.v1\r\nSec-WebSocket-Key: " + key
+                + "\r\nX-Astra-Traffic: " + traffic
                 + "\r\nAuthorization: Bearer " + current.config.token + "\r\n" + headers + "\r\n";
             size_t sent = 0;
             while (sent < request.size() && !stopping.load() && mono() < deadline) {
@@ -331,6 +333,11 @@ void AstraRelayTransport::run() {
             if (version != "HTTP/1.1") continue;
             if (status == 403) { administrativelyDenied(); continue; }
             if (status == 401) { notify(0,0); continue; }
+            if (status == 409 && traffic == "media") {
+                { std::lock_guard<std::mutex> lock(configurationMutex); policy.networkLost(); }
+                mediaRetryAt = mono() + 60000;
+                continue;
+            }
             if (status != 101) { wait(-1,0,mono()+500); continue; }
             std::map<std::string,std::string> fields; bool duplicate = false;
             while (std::getline(lines,line)) {
@@ -376,11 +383,11 @@ void AstraRelayTransport::run() {
         if (relay && !receiveFrames()) break;
         while (!stopping.load()) {
             Snapshot desired = snapshot();
-            if (!desired.config.networkAvailable || relay && desired.route != RelayRoute::Relay || !relay && desired.route == RelayRoute::Relay) { reconfigured = true; break; }
+            if (!desired.config.networkAvailable || relay && desired.route != RelayRoute::Relay || !relay && desired.route == RelayRoute::Relay && mono() >= mediaRetryAt) { reconfigured = true; break; }
             short localEvents = (networkOut.size() < Queue::limit/2 ? POLLIN : 0) | (clientOut.size() ? POLLOUT : 0);
             short remoteEvents = (clientOut.size() < Queue::limit/2 || writeNeedsRead ? POLLIN : 0) | (networkOut.size() || readNeedsWrite ? POLLOUT : 0);
             pollfd events[3] = {{wakeFd,POLLIN,0},{peerFd,localEvents,0},{fd,remoteEvents,0}};
-            int timeout = relay && SSL_pending(tls.ssl) && clientOut.size() < Queue::limit/2 ? 0 : int(std::max<int64_t>(1,desired.wakeupMs));
+            int timeout = relay && SSL_pending(tls.ssl) && clientOut.size() < Queue::limit/2 ? 0 : int(std::max<int64_t>(1, mediaRetryAt > mono() ? std::min(desired.wakeupMs, mediaRetryAt - mono()) : desired.wakeupMs));
             int result = poll(events,3,timeout);
             if (result < 0) { if (errno == EINTR) continue; break; }
             if (events[0].revents) { uint64_t value; while (::read(wakeFd,&value,sizeof(value)) > 0) {} continue; }

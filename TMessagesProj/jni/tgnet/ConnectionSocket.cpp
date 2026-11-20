@@ -67,7 +67,7 @@ ConnectionSocket::~ConnectionSocket() {
     }
 }
 
-void ConnectionSocket::openConnection(std::string address, uint16_t port, std::string secret, bool ipv6, int32_t networkType, bool relayEligible) {
+void ConnectionSocket::openConnection(std::string address, uint16_t port, std::string secret, bool ipv6, int32_t networkType, bool relayEligible, const char* traffic) {
     if(ConnectionsManager::getInstance(instanceNum).isSessionDisabled())return;
     currentNetworkType = networkType;
     isIpv6 = ipv6;
@@ -210,7 +210,7 @@ void ConnectionSocket::openConnection(std::string address, uint16_t port, std::s
 
     if (useRelayTransport) {
         int localSocket = -1;
-        relayTransport = astragram::AstraRelayTransport::open(address, port, localSocket);
+        relayTransport = astragram::AstraRelayTransport::open(address, port, localSocket, traffic);
         if (!relayTransport) { closeSocket(1, -1); return; }
         close(socketFd);
         socketFd = localSocket;

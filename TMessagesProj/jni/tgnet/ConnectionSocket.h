@@ -30,7 +30,7 @@ public:
 
     void writeBuffer(uint8_t *data, uint32_t size);
     void writeBuffer(NativeByteBuffer *buffer);
-    void openConnection(std::string address, uint16_t port, std::string secret, bool ipv6, int32_t networkType, bool relayEligible = true);
+    void openConnection(std::string address, uint16_t port, std::string secret, bool ipv6, int32_t networkType, bool relayEligible = true, const char* traffic = "control");
     void setTimeout(time_t timeout);
     time_t getTimeout();
     bool isDisconnected();

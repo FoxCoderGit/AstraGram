@@ -5,7 +5,7 @@
     const button=document.createElement('button');button.dataset.tab='relay';button.textContent='AstraRelay';
     document.querySelector('aside nav').append(button);
     const section=document.createElement('section');section.id='relay';section.className='tab';section.hidden=true;
-    section.innerHTML=`<article><h2>AstraRelay</h2><p class="muted">Защищённая передача Telegram-трафика через VPS. Звонки передаются напрямую. Содержимое сообщений и ключи Telegram сервис не читает.</p><p id="relayStatus" role="status">Загрузка состояния…</p><div class="toolbar"><label class="switch"><input id="relayEnabled" type="checkbox"> Разрешить AstraRelay</label><button id="relaySave">Сохранить</button><button id="relayRefresh" class="secondary">Обновить</button><button id="relayReconnect" class="secondary">Переподключить туннели</button></div><p class="muted">При запрете клиенты сразу переходят на прямое соединение. Следующая проверка разрешения — через 24 часа. Переподключение туннелей не завершает сеансы Telegram.</p></article><div id="relayCards" class="cards"></div><article><h2>Доступ устройств</h2><p class="muted">Настройка действует на все Telegram-аккаунты этого устройства. Разрешение устройства не отменяет общий запрет сервиса.</p><div class="toolbar"><input id="relaySearch" placeholder="Устройство / пометка / идентификатор"></div><div class="tableWrap"><table><thead><tr><th>Устройство</th><th>Идентификатор</th><th>Соединения</th><th>Доступ</th><th>Действия</th></tr></thead><tbody id="relayDeviceRows"></tbody></table></div></article>`;
+    section.innerHTML=`<article><h2>AstraRelay</h2><p class="muted">Защищённая передача Telegram-трафика через VPS. Звонки передаются напрямую. Содержимое сообщений и ключи Telegram сервис не читает.</p><p id="relayStatus" role="status">Загрузка состояния…</p><div class="toolbar"><label class="switch"><input id="relayEnabled" type="checkbox"> Разрешить AstraRelay</label><label class="switch"><input id="relayBlockMedia" type="checkbox"> Запретить медиа</label><button id="relaySave">Сохранить</button><button id="relayRefresh" class="secondary">Обновить</button><button id="relayReconnect" class="secondary">Переподключить туннели</button></div><p class="muted">При запрете клиенты сразу переходят на прямое соединение. Следующая проверка разрешения — через 24 часа. Переподключение туннелей не завершает сеансы Telegram.</p></article><div id="relayCards" class="cards"></div><article><h2>Доступ устройств</h2><p class="muted">Настройка действует на все Telegram-аккаунты этого устройства. Разрешение устройства не отменяет общий запрет сервиса.</p><div class="toolbar"><input id="relaySearch" placeholder="Устройство / пометка / идентификатор"></div><div class="tableWrap"><table><thead><tr><th>Устройство</th><th>Идентификатор</th><th>Соединения</th><th>Доступ</th><th>Действия</th></tr></thead><tbody id="relayDeviceRows"></tbody></table></div></article>`;
     document.querySelector('.workspace').insertBefore(section,$('updated'));
     let current=null,loading=false;
     const volume=n=>{n=Number(n)||0;const units=['Б','КБ','МБ','ГБ','ТБ'];let i=0;while(n>=1024&&i<units.length-1){n/=1024;i++;}return n.toFixed(i?1:0)+' '+units[i];};
@@ -24,7 +24,7 @@
     async function refresh(){
         if(loading)return;loading=true;
         try{
-            current=await api('relay');$('relayEnabled').checked=!!current.policy.enabled;
+            current=await api('relay');$('relayEnabled').checked=!!current.policy.enabled; $('relayBlockMedia').checked=!!current.policy.block_media;
             $('relayStatus').textContent=current.policy.enabled?'Сервис включён':'Сервис отключён администратором';$('relayStatus').className='';
             const cards=[['Соединения',Number(current.active_connections)||0],['Активные устройства',Object.keys(current.active_devices||{}).length],['От клиентов',volume(current.bytes_up)],['К клиентам',volume(current.bytes_down)]];
             $('relayCards').innerHTML=cards.map(([label,value])=>`<article><p class="muted">${esc(label)}</p><h2>${esc(value)}</h2></article>`).join('');
@@ -37,8 +37,13 @@
     $('relaySearch').oninput=renderDevices;$('relayRefresh').onclick=refresh;
     $('relaySave').onclick=async()=>{
         const enabled=$('relayEnabled').checked;
+        const block_media=$('relayBlockMedia').checked;
+        if(current && enabled===current.policy.enabled){
+            try { await api('relay',{action:'block_media',block_media}); await refresh(); } catch(error) {notify(error.message,true);}
+            return;
+        }
         if(!confirm(enabled?'Разрешить AstraRelay? Клиенты с действующим запретом проверят доступ в свой срок.':'Отключить AstraRelay? Подключённые клиенты сразу перейдут на прямое соединение, повторная проверка — через 24 часа.'))return;
-        try{await api('relay',{action:'enabled',enabled});await refresh();notify('Настройка AstraRelay сохранена.');}catch(error){notify(error.message,true);}
+        try{await api('relay',{action:'enabled',enabled,block_media});await refresh();notify('Настройка AstraRelay сохранена.');}catch(error){notify(error.message,true);}
     };
     $('relayReconnect').onclick=async()=>{if(!confirm('Переподключить активные туннели? Сеансы Telegram сохранятся.'))return;try{await api('relay',{action:'reconnect'});await refresh();notify('Туннели переподключаются.');}catch(error){notify(error.message,true);}};
     $('relayDeviceRows').onclick=async event=>{

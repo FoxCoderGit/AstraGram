@@ -32,18 +32,19 @@ void setAstraRelayEligible(bool eligible);
 
 class AstraRelayTransport : public std::enable_shared_from_this<AstraRelayTransport> {
 public:
-    static std::shared_ptr<AstraRelayTransport> open(const std::string& address, uint16_t port, int& localSocket);
+    static std::shared_ptr<AstraRelayTransport> open(const std::string& address, uint16_t port, int& localSocket, const char* traffic);
     ~AstraRelayTransport();
     void stop();
     void wake();
 private:
-    AstraRelayTransport(const std::string& address, uint16_t port, int peer, int wake);
+    AstraRelayTransport(const std::string& address, uint16_t port, int peer, int wake, const char* traffic);
     void run();
     bool wait(int networkFd, short networkEvents, int64_t deadline);
     int connectTCP(const std::string& address, uint16_t port, int64_t deadline);
     void notify(int event, int64_t delay);
     std::string address;
     uint16_t port;
+    std::string traffic;
     int peerFd;
     int wakeFd;
     std::atomic<bool> stopping{false};

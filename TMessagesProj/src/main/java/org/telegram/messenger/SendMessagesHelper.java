@@ -7009,7 +7009,7 @@ public class SendMessagesHelper extends BaseController implements NotificationCe
         } else if (message.type == 3) {
             String location = message.obj.messageOwner.attachPath;
             putToDelayedMessages(location, message);
-            getFileLoader().uploadFile(location, message.sendRequest == null, true, ConnectionsManager.FileTypeAudio);
+            getFileLoader().uploadFile(location, message.sendRequest == null, true, ConnectionsManager.FileTypeVoice);
             putToUploadingMessages(message.obj);
         } else if (message.type == 4) {
             boolean add = index < 0;

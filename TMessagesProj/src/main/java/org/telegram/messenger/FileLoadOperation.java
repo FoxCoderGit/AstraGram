@@ -284,6 +284,7 @@ public class FileLoadOperation {
     private boolean ungzip;
 
     private int currentType;
+    private boolean voiceDocument;
     public FilePathDatabase.PathData pathSaveData;
     private long startTime;
     private FileLoaderPriorityQueue priorityQueue;
@@ -427,6 +428,7 @@ public class FileLoadOperation {
 
     public FileLoadOperation(TLRPC.Document documentLocation, Object parent) {
         isVideoDocument = MessageObject.isVideoDocument(documentLocation);
+        voiceDocument = documentLocation != null && MessageObject.isVoiceDocument(documentLocation);
         paceDocumentRequests = documentLocation != null && !MessageObject.isAnyKindOfStickerOrEmoji(documentLocation) &&
                 !"application/x-tgwallpattern".equals(documentLocation.mime_type);
         updateParams();
@@ -1493,7 +1495,7 @@ public class FileLoadOperation {
                 }
             }
             for (int i = 0; i < waitingDownloadSize.length; i++) {
-                int connectionType = ConnectionsManager.ConnectionTypeDownload | (i << 16);
+                int connectionType = ConnectionsManager.ConnectionTypeDownload | ((voiceDocument ? ConnectionsManager.AstraVoiceConnectionIndex : i) << 16);
                 if (waitingDownloadSize[i] > getMaxCancelledBytesPerConnection())  {
                     int datacenterId = isCdn ? cdnDatacenterId : this.datacenterId;
                     ConnectionsManager.getInstance(currentAccount).discardConnection(datacenterId, connectionType);
@@ -2234,7 +2236,7 @@ public class FileLoadOperation {
             }
         }
         for (int i = 0; i < waitingDownloadSize.length; i++) {
-            int connectionType = ConnectionsManager.ConnectionTypeDownload | (i << 16);
+            int connectionType = ConnectionsManager.ConnectionTypeDownload | ((voiceDocument ? ConnectionsManager.AstraVoiceConnectionIndex : i) << 16);
             if (waitingDownloadSize[i] > getMaxCancelledBytesPerConnection())  {
                 int datacenterId = isCdn ? cdnDatacenterId : this.datacenterId;
                 ConnectionsManager.getInstance(currentAccount).discardConnection(datacenterId, connectionType);
@@ -2436,7 +2438,7 @@ public class FileLoadOperation {
             int connectionType;
             if (useConnectionType == -1) {
                 // Both pool sizes are powers of two; keep the index valid if the counter wraps.
-                connectionType = ConnectionsManager.ConnectionTypeDownload | ((requestsCount & (downloadConnectionsCount - 1)) << 16);
+                connectionType = ConnectionsManager.ConnectionTypeDownload | ((voiceDocument ? ConnectionsManager.AstraVoiceConnectionIndex : requestsCount & (downloadConnectionsCount - 1)) << 16);
                 //globalRequestPointer++;
             } else {
                 connectionType = useConnectionType;

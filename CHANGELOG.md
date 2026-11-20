@@ -1,5 +1,9 @@
 # Changelog
 
+## 13.2.2-astra.139
+
+- Add an AstraRelay admin switch that routes photos, video, music and files directly while keeping voice messages eligible for the relay.
+
 ## 13.2.2-astra.138
 
 - Schedule daily AstraGram and exteraGram badge refreshes with Android JobScheduler.

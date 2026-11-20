@@ -366,7 +366,9 @@ void Connection::connect() {
     lastPacketLength = 0;
     wasConnected = false;
     hasSomeDataSinceLastConnect = false;
-    openConnection(hostAddress, hostPort, secret, ipv6 != 0, ConnectionsManager::getInstance(currentDatacenter->instanceNum).currentNetworkType, connectionType != ConnectionTypeProxy);
+    const bool fileTransfer = connectionType == ConnectionTypeDownload || connectionType == ConnectionTypeUpload;
+    const char* traffic = !fileTransfer ? "control" : connectionNum == ASTRA_VOICE_CONNECTION_INDEX ? "voice" : "media";
+    openConnection(hostAddress, hostPort, secret, ipv6 != 0, ConnectionsManager::getInstance(currentDatacenter->instanceNum).currentNetworkType, connectionType != ConnectionTypeProxy, traffic);
     if (connectionType == ConnectionTypeProxy) {
         setTimeout(5);
     } else if (connectionType == ConnectionTypePush) {

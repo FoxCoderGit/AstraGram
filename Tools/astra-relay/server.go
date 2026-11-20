@@ -71,6 +71,18 @@ func (s *relayServer) tunnelHandler(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(status)
 		return
 	}
+	traffic := r.Header.Get("X-Astra-Traffic")
+	if traffic != "" && traffic != "media" && traffic != "voice" && traffic != "control" {
+		w.WriteHeader(400)
+		return
+	}
+	s.mu.Lock()
+	blocked := s.policy.blocksTraffic(traffic)
+	s.mu.Unlock()
+	if blocked {
+		w.WriteHeader(409)
+		return
+	}
 	ip := peerIP(r)
 	if !s.reserve(claims.Device, ip) {
 		s.mu.Lock()
@@ -115,7 +127,7 @@ func (s *relayServer) tunnelHandler(w http.ResponseWriter, r *http.Request) {
 		_ = upstream.Close()
 		return
 	}
-	stream := &wsStream{conn: conn, reader: buffer.Reader, upstream: upstream, device: claims.Device, ip: ip, authorizedUntil: claims.Until, done: make(chan struct{})}
+	stream := &wsStream{conn: conn, reader: buffer.Reader, upstream: upstream, device: claims.Device, ip: ip, trafficClass: traffic, authorizedUntil: claims.Until, done: make(chan struct{})}
 	stream.traffic = func(up bool, count int) {
 		if up {
 			s.bytesUp.Add(uint64(count))
@@ -125,12 +137,17 @@ func (s *relayServer) tunnelHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	s.mu.Lock()
 	allowed := s.policy.Enabled && !s.policy.Denied[claims.Device]
-	if allowed {
+	blocked = s.policy.blocksTraffic(traffic)
+	if allowed && !blocked {
 		s.active[stream] = true
 	}
 	s.mu.Unlock()
 	if !allowed {
 		stream.close(4003)
+		return
+	}
+	if blocked {
+		stream.close(1012)
 		return
 	}
 	defer func() { s.mu.Lock(); delete(s.active, stream); s.mu.Unlock() }()

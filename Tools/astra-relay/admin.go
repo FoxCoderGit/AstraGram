@@ -9,14 +9,18 @@ import (
 	"time"
 )
 
-func (s *relayServer) setPolicy(enabled *bool, device string, denied *bool) error {
+func (s *relayServer) setPolicy(enabled *bool, device string, denied *bool, blockMedia ...*bool) error {
 	s.mu.Lock()
-	next := Policy{Revision: s.policy.Revision + 1, Enabled: s.policy.Enabled, Denied: map[string]bool{}}
+	previous := s.policy
+	next := Policy{BlockMedia: previous.BlockMedia, Revision: s.policy.Revision + 1, Enabled: s.policy.Enabled, Denied: map[string]bool{}}
 	for k, v := range s.policy.Denied {
 		next.Denied[k] = v
 	}
 	if enabled != nil {
 		next.Enabled = *enabled
+	}
+	if len(blockMedia) > 0 && blockMedia[0] != nil {
+		next.BlockMedia = *blockMedia[0]
 	}
 	if device != "" && denied != nil {
 		if *denied {
@@ -30,15 +34,20 @@ func (s *relayServer) setPolicy(enabled *bool, device string, denied *bool) erro
 		return err
 	}
 	s.policy = next
-	var closeStreams []*wsStream
+	var closeStreams, restrictedStreams []*wsStream
 	for stream := range s.active {
 		if !next.Enabled || next.Denied[stream.device] {
 			closeStreams = append(closeStreams, stream)
+		} else if next.blocksTraffic(stream.trafficClass) && !previous.blocksTraffic(stream.trafficClass) {
+			restrictedStreams = append(restrictedStreams, stream)
 		}
 	}
 	s.mu.Unlock()
 	for _, stream := range closeStreams {
 		go stream.close(4003)
+	}
+	for _, stream := range restrictedStreams {
+		go stream.close(1012)
 	}
 	return nil
 }
@@ -77,13 +86,14 @@ func (s *relayServer) adminHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	var request struct {
 		Enabled *bool  `json:"enabled"`
+        BlockMedia *bool `json:"block_media"`
 		Device  string `json:"device"`
 		Denied  *bool  `json:"denied"`
 	}
 	if !readJSON(w, r, &request) {
 		return
 	}
-	if request.Enabled == nil && request.Device == "" {
+	if request.Enabled == nil && request.BlockMedia == nil && request.Device == "" {
 		w.WriteHeader(400)
 		return
 	}
@@ -97,7 +107,7 @@ func (s *relayServer) adminHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if err := s.setPolicy(request.Enabled, request.Device, request.Denied); err != nil {
+	if err := s.setPolicy(request.Enabled, request.Device, request.Denied, request.BlockMedia); err != nil {
 		w.WriteHeader(503)
 		return
 	}

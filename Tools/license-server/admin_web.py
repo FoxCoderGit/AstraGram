@@ -297,14 +297,19 @@ def route(h, b):
         action = data.get('action')
         if action == 'enabled' and type(data.get('enabled')) is bool:
             payload = {'enabled': data['enabled']}
+            if 'block_media' in data:
+                if type(data['block_media']) is not bool: raise b.Rejected('bad_request', 400)
+                payload['block_media'] = data['block_media']
         elif action == 'device' and isinstance(data.get('device'), str) and re.fullmatch(r'[0-9a-f]{64}', data['device']) and type(data.get('denied')) is bool:
             payload = {'device': data['device'], 'denied': data['denied']}
+        elif action == 'block_media' and type(data.get('block_media')) is bool:
+            payload = {'block_media': data['block_media']}
         elif action == 'reconnect':
             payload = {}
         else:
             raise b.Rejected('bad_request', 400)
         result = relay_control.request(b, 'POST', '/reconnect' if action == 'reconnect' else '/policy', payload)
-        with b.db() as c: audit(c, 'relay.' + action, data.get('device', str(data.get('enabled', ''))))
+        with b.db() as c: audit(c, 'relay.' + action, data.get('device', str(data.get('enabled', data.get('block_media', '')))))
     elif path == '/admin/api/licenses': result = license_action(b, data)
     elif path == '/admin/api/policy':
         require = data.get('require_key')

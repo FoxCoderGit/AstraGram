@@ -581,6 +581,9 @@ public class FileUploadOperation {
         }
         final int requestConnectionNum = connectionType >> 16;
         uploadRequestsPerConnection[requestConnectionNum]++;
+        if (currentType == ConnectionsManager.FileTypeVoice) {
+            connectionType = ConnectionsManager.ConnectionTypeUpload | (ConnectionsManager.AstraVoiceConnectionIndex << 16);
+        }
         long time = System.currentTimeMillis();
         int[] requestToken = new int[1];
         requestToken[0] = ConnectionsManager.getInstance(currentAccount).sendRequest(finalRequest, (response, error) -> {
@@ -592,7 +595,7 @@ public class FileUploadOperation {
                 FileLog.d("debug_uploading: " + " response reqId " + requestToken[0] + " time" + uploadingFilePath);
             }
             int networkType = response != null ? response.networkType : ApplicationLoader.getCurrentNetworkType();
-            if (currentType == ConnectionsManager.FileTypeAudio) {
+            if (currentType == ConnectionsManager.FileTypeAudio || currentType == ConnectionsManager.FileTypeVoice) {
                 StatsController.getInstance(currentAccount).incrementSentBytesCount(networkType, StatsController.TYPE_AUDIOS, requestSize);
             } else if (currentType == ConnectionsManager.FileTypeVideo) {
                 StatsController.getInstance(currentAccount).incrementSentBytesCount(networkType, StatsController.TYPE_VIDEOS, requestSize);
@@ -652,7 +655,7 @@ public class FileUploadOperation {
                         delegate.didFinishUploadingFile(FileUploadOperation.this, null, result, key, iv);
                         cleanup();
                     }
-                    if (currentType == ConnectionsManager.FileTypeAudio) {
+                    if (currentType == ConnectionsManager.FileTypeAudio || currentType == ConnectionsManager.FileTypeVoice) {
                         StatsController.getInstance(currentAccount).incrementSentItemsCount(ApplicationLoader.getCurrentNetworkType(), StatsController.TYPE_AUDIOS, 1);
                     } else if (currentType == ConnectionsManager.FileTypeVideo) {
                         StatsController.getInstance(currentAccount).incrementSentItemsCount(ApplicationLoader.getCurrentNetworkType(), StatsController.TYPE_VIDEOS, 1);
