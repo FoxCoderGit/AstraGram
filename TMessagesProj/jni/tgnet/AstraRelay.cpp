@@ -108,6 +108,17 @@ bool connected(uint64_t generation) {
     if (event) event(3, 0);
     return true;
 }
+// Each accepted WSS stream contributes exactly once, including early returns.
+struct ActiveRelayConnection {
+    bool active = false;
+    void release() {
+        if (!active) return;
+        std::lock_guard<std::mutex> lock(configurationMutex);
+        policy.disconnected();
+        active = false;
+    }
+    ~ActiveRelayConnection() { release(); }
+};
 bool cleanHeader(const std::string& value) { return value.find_first_of("\r\n") == std::string::npos; }
 std::string hex(const uint8_t* value, size_t length) {
     static const char digits[] = "0123456789abcdef";
@@ -264,6 +275,7 @@ void AstraRelayTransport::run() {
         if (fd < 0) { if (!relay) break; wait(-1,0,mono()+1000); continue; }
         FD network(fd);
         TLS tls;
+        ActiveRelayConnection activeConnection;
         std::vector<uint8_t> initial;
         auto sslWait = [&](int result, int64_t until) {
             int error = SSL_get_error(tls.ssl,result);
@@ -332,6 +344,7 @@ void AstraRelayTransport::run() {
             if (duplicate || fields["sec-websocket-accept"] != base64(hash,sizeof(hash)) || fields["sec-websocket-protocol"] != "astrarelay.v1"
                     || lower(fields["upgrade"]) != "websocket" || lower(fields["connection"]).find("upgrade") == std::string::npos || fields.count("sec-websocket-extensions")) continue;
             if (!connected(current.generation)) continue;
+            activeConnection.active = true;
             initial.assign(response.begin()+end+4,response.end());
         }
         Queue networkOut, clientOut;
@@ -408,6 +421,7 @@ void AstraRelayTransport::run() {
             }
             if ((events[2].revents & (POLLERR|POLLHUP|POLLRDHUP)) && !networkProgress && clientOut.size() < Queue::limit/2) break;
         }
+        activeConnection.release();
         if (relay && !normalClose && !reconfigured && !stopping.load()) { std::lock_guard<std::mutex> lock(configurationMutex); policy.attempting(mono()); }
         break; // Never replay an encrypted stream into another TCP connection.
     }

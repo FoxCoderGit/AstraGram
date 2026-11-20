@@ -16,6 +16,23 @@ static std::vector<uint8_t> frame(uint8_t opcode,const std::vector<uint8_t>& pay
 
 int main() {
     {
+        RelayPolicy p;p.access(RelayPermission::Allowed,0,RelayPolicy::permissionMs);
+        p.connected();
+        // An auxiliary download connection fails while the main tunnel stays healthy.
+        p.attempting(1000);
+        assert(p.route(31000)==RelayRoute::Relay);
+        assert(p.retryAt()==0);
+        p.connected();p.disconnected();p.attempting(40000);
+        assert(p.route(70000)==RelayRoute::Relay);
+        // Once every healthy stream is gone, the normal recovery timer applies.
+        p.disconnected();p.attempting(80000);
+        assert(p.route(109999)==RelayRoute::Relay);
+        assert(p.route(110000)==RelayRoute::Direct);
+        assert(p.retryAt()==110000+RelayPolicy::retryMs);
+        p.disconnected(); // No underflow on repeated shutdown.
+        assert(p.route(110001)==RelayRoute::Direct);
+    }
+    {
         RelayPolicy p;
         assert(p.route(0)==RelayRoute::WaitingForAccess);
         assert(p.route(29999)==RelayRoute::WaitingForAccess);

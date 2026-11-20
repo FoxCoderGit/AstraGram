@@ -1,5 +1,11 @@
 # Changelog
 
+## 13.2.2-astra.132
+
+- Prevent one failed auxiliary Telegram connection from disabling every AstraRelay tunnel while established streams remain connected.
+- Track accepted WSS streams through shutdown and retain the 30-second recovery / hourly retry policy when no established stream remains. Administrative denials still take priority.
+- Clear the cooldown caused by the previous transport accounting once during upgrade.
+
 ## 13.2.2-astra.131
 
 - Keep relay eligibility stable when Android repeats capability events for the same network.

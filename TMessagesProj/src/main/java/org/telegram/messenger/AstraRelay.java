@@ -152,9 +152,9 @@ public final class AstraRelay {
         if(deniedDeadline>now){permission=2;accessDeadline=deniedDeadline;token="";}
         // One-time recovery from retries persisted by the old, unstable network gate.
         // Never shorten an administrative denial or subsequent technical cooldowns.
-        if(prefs.getInt("eligibility_revision",0)<1){
+        if(prefs.getInt("eligibility_revision",0)<2){
             if(deniedDeadline<=now){retryDeadline=0;diagnostic("legacy technical cooldown cleared");}
-            prefs.edit().putInt("eligibility_revision",1).apply();
+            prefs.edit().putInt("eligibility_revision",2).apply();
             saveDeadlines();
         }
     }

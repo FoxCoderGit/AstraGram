@@ -48,7 +48,7 @@ public:
             awaitingSince = -1;
             return RelayRoute::Direct;
         }
-        if (recoveringSince >= 0 && now - recoveringSince >= recoveryMs) {
+        if (activeConnections == 0 && recoveringSince >= 0 && now - recoveringSince >= recoveryMs) {
             cooldownUntil = now + retryMs;
             recoveringSince = -1;
             return RelayRoute::Direct;
@@ -57,9 +57,10 @@ public:
     }
 
     void attempting(int64_t now) {
-        if (permission == RelayPermission::Allowed && recoveringSince < 0) recoveringSince = now;
+        if (permission == RelayPermission::Allowed && activeConnections == 0 && recoveringSince < 0) recoveringSince = now;
     }
-    void connected() { recoveringSince = -1; cooldownUntil = 0; }
+    void connected() { ++activeConnections; recoveringSince = -1; cooldownUntil = 0; }
+    void disconnected() { if (activeConnections > 0) --activeConnections; }
     void networkLost() { recoveringSince = -1; awaitingSince = -1; }
     int64_t attemptRemaining(int64_t now) const {
         return recoveringSince < 0 ? recoveryMs : recoveryMs - (now - recoveringSince);
@@ -79,6 +80,7 @@ private:
     int64_t awaitingSince = -1;
     int64_t recoveringSince = -1;
     int64_t cooldownUntil = 0;
+    uint32_t activeConnections = 0;
 };
 
 }
