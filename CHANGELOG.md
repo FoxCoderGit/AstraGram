@@ -1,5 +1,10 @@
 # Changelog
 
+## 13.2.2-astra.138
+
+- Schedule daily AstraGram and exteraGram badge refreshes with Android JobScheduler.
+- Add a message calculator switch to the built-in Plugins menu.
+
 ## 13.2.2-astra.137
 
 - Use more profile hints from inline bot results and look up existing bot replies when inline search returns no profile. Profile lookup never sends a message to the bot chat.

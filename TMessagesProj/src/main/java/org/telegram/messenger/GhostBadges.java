@@ -15,9 +15,7 @@ import javax.net.ssl.HttpsURLConnection;
 /** Always-on project badges authenticated by the project's RSA key. */
 public final class GhostBadges {
     private static volatile GhostBadgeRegistry registry;
-    private static volatile long validUntil, nextCheck;
-    private static final DispatchQueue network = new DispatchQueue("veylBadgeSync");
-    private static final java.util.concurrent.atomic.AtomicBoolean loading = new java.util.concurrent.atomic.AtomicBoolean();
+    private static volatile long validUntil;
     private static SharedPreferences prefs() {
         return ApplicationLoader.applicationContext.getSharedPreferences("ghost_project_badges_v1", 0);
     }
@@ -88,26 +86,35 @@ public final class GhostBadges {
             }
         });
     }
-    public static void refresh() {
-        long now=android.os.SystemClock.elapsedRealtime();
-        if(ApplicationLoader.applicationContext==null||now<nextCheck||!loading.compareAndSet(false,true))return;
-        nextCheck=now+30000;
-        network.postRunnable(()->{
-            HttpsURLConnection connection=null;
-            try {
-                connection=(HttpsURLConnection)new URL(GhostServiceEndpoints.VERIFICATION+"/v1/badges").openConnection(Proxy.NO_PROXY);
-                connection.setConnectTimeout(10000);connection.setReadTimeout(15000);connection.setInstanceFollowRedirects(false);
-                if(connection.getResponseCode()!=200)throw new IOException("Badge service unavailable");
-                try(InputStream input=connection.getInputStream();ByteArrayOutputStream output=new ByteArrayOutputStream()){
-                    byte[] buffer=new byte[8192];int n;while((n=input.read(buffer))!=-1){if(output.size()+n>3*1024*1024)throw new IOException("Badge response too large");output.write(buffer,0,n);}
-                    applySignedSnapshot(output.toString("UTF-8"));
+    static long syncIfDue() {
+        registry();
+        long remaining = validUntil - System.currentTimeMillis();
+        if (remaining > 0) return Math.min(remaining, GhostBadgeSyncJob.DAY_MS);
+        HttpsURLConnection connection = null;
+        try {
+            connection = (HttpsURLConnection) new URL(GhostServiceEndpoints.VERIFICATION + "/v1/badges").openConnection(Proxy.NO_PROXY);
+            connection.setConnectTimeout(10000);
+            connection.setReadTimeout(15000);
+            connection.setInstanceFollowRedirects(false);
+            if (connection.getResponseCode() != 200) throw new IOException("Badge service unavailable");
+            try (InputStream input = connection.getInputStream(); ByteArrayOutputStream output = new ByteArrayOutputStream()) {
+                byte[] buffer = new byte[8192];
+                int count;
+                while ((count = input.read(buffer)) != -1) {
+                    if (output.size() + count > 3 * 1024 * 1024) throw new IOException("Badge response too large");
+                    output.write(buffer, 0, count);
                 }
-                nextCheck=android.os.SystemClock.elapsedRealtime()+5*60000;
-            }catch(Exception error){android.util.Log.w("VeylBadges","Verification sync failed: "+error.getClass().getSimpleName()+": "+error.getMessage());FileLog.e(error);}finally{if(connection!=null)connection.disconnect();loading.set(false);}
-        });
+                applySignedSnapshot(output.toString("UTF-8"));
+            }
+            return Math.max(1000, Math.min(validUntil - System.currentTimeMillis(), GhostBadgeSyncJob.DAY_MS));
+        } catch (Exception error) {
+            FileLog.e(error);
+            return GhostBadgeSyncJob.RETRY_MS;
+        } finally {
+            if (connection != null) connection.disconnect();
+        }
     }
     public static GhostBadgeRegistry.Badge badge(int account, TLObject peer) {
-        refresh();
         if (!(peer instanceof TLRPC.User)) return null;
         TLRPC.User user = (TLRPC.User) peer;
         GhostBadgeRegistry data=registry();

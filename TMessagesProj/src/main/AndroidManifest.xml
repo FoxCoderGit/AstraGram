@@ -718,6 +718,7 @@
             android:value="org.telegram.messenger.chromecast.ChromecastOptionsProvider" />
 
         <service android:name="org.telegram.messenger.AstraRelayJob" android:permission="android.permission.BIND_JOB_SERVICE" android:exported="false" />
+        <service android:name="org.telegram.messenger.GhostBadgeSyncJob" android:permission="android.permission.BIND_JOB_SERVICE" android:exported="false" />
     </application>
 
 </manifest>

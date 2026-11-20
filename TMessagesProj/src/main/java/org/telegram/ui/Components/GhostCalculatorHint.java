@@ -11,6 +11,7 @@ import android.widget.PopupWindow;
 import android.widget.TextView;
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.GhostCalculator;
+import org.telegram.messenger.GhostOptionalFeatures;
 import org.telegram.ui.ActionBar.Theme;
 
 /** Non-focusable suggestion above the composer: tap to append, never auto-send. */
@@ -32,7 +33,8 @@ public final class GhostCalculatorHint implements TextWatcher, View.OnAttachStat
         window = new PopupWindow(label, -2, -2, false);
         window.setElevation(dp(4)); window.setInputMethodMode(PopupWindow.INPUT_METHOD_NOT_NEEDED);
         label.setOnClickListener(v -> {
-            if (answer == null || !editor.getText().toString().equals(source)) return;
+            if (!GhostOptionalFeatures.enabled(GhostOptionalFeatures.CALCULATOR)
+                    || answer == null || !editor.getText().toString().equals(source)) return;
             String completed = source.trim() + " = " + answer;
             editor.setText(completed); editor.setSelection(completed.length()); window.dismiss();
         });
@@ -48,6 +50,11 @@ public final class GhostCalculatorHint implements TextWatcher, View.OnAttachStat
     }
     private int dp(int value) { return AndroidUtilities.dp(value); }
     private void update() {
+        if (!GhostOptionalFeatures.enabled(GhostOptionalFeatures.CALCULATOR)) {
+            source = answer = null;
+            window.dismiss();
+            return;
+        }
         source = editor.getText().toString(); answer = GhostCalculator.calculateDraft(source);
         if (answer == null || !editor.hasFocus() || !editor.hasWindowFocus() || !editor.isAttachedToWindow() || !editor.isShown()) { window.dismiss(); return; }
         label.setText("= " + answer);

@@ -39,7 +39,7 @@ public class GhostApplication extends ApplicationLoader {
         });
         org.ghostgram.messenger.license.LicenseManager.initialize(this);
         org.telegram.messenger.AstraRelay.initialize(this);
-        org.telegram.messenger.GhostBadges.refresh();
+        org.telegram.messenger.GhostBadgeSyncJob.initialize(this);
 
         // This standalone package cannot use Telegram's FCM registration. Keep the
         // native Telegram push connection alive instead; it automatically shares
