@@ -216,6 +216,7 @@ import org.telegram.ui.Components.ThemeRevealView;
 import org.telegram.ui.Components.TextStyleSpan;
 import org.telegram.ui.Components.ThemeEditorView;
 import org.telegram.ui.Components.UndoView;
+import org.telegram.ui.Components.GhostStickerOwner;
 import org.telegram.ui.Components.inset.WindowAnimatedInsetsProvider;
 import org.telegram.ui.Components.poll.PollAttachedMediaPack;
 import org.telegram.ui.Components.spoilers.SpoilerEffect2;
@@ -1647,6 +1648,7 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
         }
         boolean pushOpened = false;
         long push_user_id = 0;
+        long profileLinkUserId = 0;
         long push_chat_id = 0;
         long[] push_story_dids = null;
         int push_story_id = -1;
@@ -2650,7 +2652,11 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
                                         if (intCode != 0) {
                                             code = "" + intCode;
                                         }
+                                    } else if (url.startsWith("tg:user?") || url.startsWith("tg://user?")) {
+                                        Uri profileUri = url.startsWith("tg:user?") ? Uri.parse("tg://" + url.substring(3)) : data;
+                                        profileLinkUserId = readProfileLinkUserId(profileUri, "id");
                                     } else if (url.startsWith("tg:openmessage") || url.startsWith("tg://openmessage")) {
+                                        boolean profileLink = url.startsWith("tg:openmessage?") || url.startsWith("tg://openmessage?");
                                         url = url.replace("tg:openmessage", "tg://telegram.org").replace("tg://openmessage", "tg://telegram.org");
                                         data = Uri.parse(url);
 
@@ -2658,7 +2664,9 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
                                         String chatID = data.getQueryParameter("chat_id");
                                         String msgID = data.getQueryParameter("message_id");
                                         String accountUserID = data.getQueryParameter("account_user_id");
-                                        if (userID != null) {
+                                        if (profileLink && chatID == null && msgID == null) {
+                                            profileLinkUserId = readProfileLinkUserId(data, "user_id");
+                                        } else if (userID != null) {
                                             try {
                                                 push_user_id = Long.parseLong(userID);
                                             } catch (NumberFormatException ignore) {}
@@ -3104,6 +3112,8 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
             } else if (push_story_dids != null) {
                 NotificationCenter.getInstance(intentAccount[0]).postNotificationName(NotificationCenter.closeChats);
                 openStories(push_story_dids, true);
+            } else if (profileLinkUserId > 0) {
+                pushOpened = GhostStickerOwner.openProfileLink(getLastFragment(), intentAccount[0], profileLinkUserId);
             } else if (push_user_id != 0) {
                 if (audioCallUser || videoCallUser) {
                     if (needCallAlert) {
@@ -4137,6 +4147,16 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
                 BulletinFactory.of(chatActivity).createSimpleBulletin(R.raw.contact_check, AndroidUtilities.replaceTags(LocaleController.formatString(R.string.NoPaidMessagesTokenImported, UserObject.getFirstName(user)))).show();
             }
         }, 300);
+    }
+
+    private static long readProfileLinkUserId(Uri uri, String parameter) {
+        List<String> values = uri.getQueryParameters(parameter);
+        if (values.size() != 1 || !values.get(0).matches("[1-9][0-9]{0,18}")) return 0;
+        try {
+            return Long.parseLong(values.get(0));
+        } catch (NumberFormatException ignored) {
+            return 0;
+        }
     }
 
     private void runLinkRequest(

@@ -28,7 +28,18 @@ public final class GhostStickerOwner {
                 .setTitle("Владелец пака").setMessage("Не удалось определить создателя этого пака.")
                 .setPositiveButton("ОК",null).create());return;
         }
-        new Lookup(f,account,id).start();
+        new Lookup(f,account,id,true,true).start();
+    }
+
+    public static boolean openProfileLink(BaseFragment fragment, int account, long id) {
+        if (fragment == null || fragment.getParentActivity() == null || fragment.isFinished
+                || id <= 0 || !UserConfig.getInstance(account).isClientActivated()) return false;
+        if (id == UserConfig.getInstance(account).getClientUserId()) {
+            profile(fragment, account, id, false);
+        } else {
+            new Lookup(fragment, account, id, false, false).start();
+        }
+        return true;
     }
     private static boolean usable(TLRPC.User user,long id){return GhostBotReplyPolicy.matches(user,id);}
     private static void profile(BaseFragment f,int account,long id,boolean candidate){
@@ -47,16 +58,21 @@ public final class GhostStickerOwner {
         TLRPC.User resolvedBot;
         String failure="Бот не вернул подтверждённый профиль.";
         final long owner;
+        final boolean stickerCandidate;
+        final boolean allowBot;
         final java.util.HashSet<String> triedNames=new java.util.HashSet<>();
         final Runnable timeout=()->{failure="Бот не ответил вовремя. Можно повторить поиск позже.";finish(null);};
         final Runnable inlineTimeout=this::onInlineTimeout;
-        Lookup(BaseFragment f,int account,long id){this.f=f;this.account=account;this.id=id;owner=UserConfig.getInstance(account).getClientUserId();cm=ConnectionsManager.getInstance(account);mc=MessagesController.getInstance(account);}
+        Lookup(BaseFragment f,int account,long id,boolean stickerCandidate,boolean allowBot){
+            this.f=f;this.account=account;this.id=id;this.stickerCandidate=stickerCandidate;this.allowBot=allowBot;
+            owner=UserConfig.getInstance(account).getClientUserId();
+            cm=ConnectionsManager.getInstance(account);mc=MessagesController.getInstance(account);
+        }
         void start(){
             TLRPC.User memory=mc.getUser(id);
-            if(usable(memory,id)){profile(f,account,id,true);return;}
-            progress=new AlertDialog(f.getParentActivity(),3,f.getResourceProvider());
-            progress.setOnCancelListener(d->{if(done.compareAndSet(false,true))cleanup();});
-            f.showDialog(progress);AndroidUtilities.runOnUIThread(timeout,15000);
+            if(usable(memory,id)){profile(f,account,id,stickerCandidate);return;}
+            showProgress();
+            AndroidUtilities.runOnUIThread(timeout,15000);
             MessagesStorage.getInstance(account).getStorageQueue().postRunnable(()->{
                 TLRPC.User disk=MessagesStorage.getInstance(account).getUser(id);
                 AndroidUtilities.runOnUIThread(()->{
@@ -65,6 +81,11 @@ public final class GhostStickerOwner {
                     fetch(disk!=null?disk:memory);
                 });
             });
+        }
+        void showProgress() {
+            progress = new AlertDialog(f.getParentActivity(), 3, f.getResourceProvider());
+            progress.setOnCancelListener(dialog -> { if (done.compareAndSet(false, true)) cleanup(); });
+            f.showDialog(progress);
         }
         void fetch(TLRPC.User known){
             TLRPC.TL_users_getUsers request=new TLRPC.TL_users_getUsers();
@@ -81,8 +102,29 @@ public final class GhostStickerOwner {
                     }
                 }
                 if(flood(error)){finish(null);return;}
-                lookupBot();
+                if (allowBot) lookupBot();
+                else offerBotLookup();
             }));
+        }
+        void offerBotLookup() {
+            if (!done.compareAndSet(false, true)) return;
+            cleanup();
+            if (f.getParentActivity() == null || f.isFinished) return;
+            f.showDialog(new AlertDialog.Builder(f.getParentActivity(), f.getResourceProvider())
+                    .setTitle("Поиск профиля")
+                    .setMessage("Telegram не вернул профиль по этому ID. Отправить ID боту @usinfobot для поиска?")
+                    .setPositiveButton("Найти через бота", (dialog, which) -> {
+                        if (!f.isFinished && f.getParentActivity() != null
+                                && UserConfig.getInstance(account).getClientUserId() == owner) {
+                            Lookup lookup = new Lookup(f, account, id, false, true);
+                            AndroidUtilities.runOnUIThread(() -> {
+                                if (lookup.stopped() || f.getParentActivity() == null) return;
+                                lookup.showProgress();
+                                lookup.lookupBot();
+                            });
+                        }
+                    })
+                    .setNegativeButton("Отмена", null).create());
         }
         void lookupBot(){
             if(stopped())return;
@@ -186,7 +228,7 @@ public final class GhostStickerOwner {
         void finish(TLRPC.User user){
             if(!done.compareAndSet(false,true))return;
             cleanup();if(f.getParentActivity()==null||f.isFinished||UserConfig.getInstance(account).getClientUserId()!=owner)return;
-            if(user!=null){profile(f,account,id,true);return;}
+            if(user!=null){profile(f,account,id,stickerCandidate);return;}
             f.showDialog(new AlertDialog.Builder(f.getParentActivity(),f.getResourceProvider())
                 .setTitle("Профиль не найден")
                 .setMessage(failure+"\n\nИскомый ID: "+id+". Профиль открывается только после проверки совпадения ID; прежний username мог сменить владельца.")

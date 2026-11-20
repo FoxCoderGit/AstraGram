@@ -1,5 +1,9 @@
 # Changelog
 
+## 13.2.2-astra.136
+
+- Open profiles from `tg://user?id=…` and `tg://openmessage?user_id=…` using the same verified ID lookup as sticker packs. Links with a message ID still open the message.
+
 ## 13.2.2-astra.135
 
 - Do not discard incoming reaction alerts based on open-chat state. Record delivery after posting the Android notification.
