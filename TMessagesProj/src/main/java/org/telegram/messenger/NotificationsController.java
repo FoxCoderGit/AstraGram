@@ -746,12 +746,7 @@ public class NotificationsController extends BaseController implements Notificat
                 android.util.Log.i("GhostReactions", "blocked: account, license or mute setting");
                 return;
             }
-            if (GhostReactionPolicy.isChatVisible(ApplicationLoader.mainInterfacePaused,
-                    ApplicationLoader.isScreenOn, openedDialogId, dialogId, currentAccount, UserConfig.selectedAccount)) {
-                android.util.Log.i("GhostReactions", "suppressed: chat visible in foreground");
-                rememberGhostReaction(eventKey);
-                return;
-            }
+            // A chat being open does not acknowledge a reaction notification.
             if (!notificationManager.areNotificationsEnabled()) {
                 android.util.Log.i("GhostReactions", "blocked: Android notifications disabled");
                 return;
