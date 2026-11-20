@@ -316,25 +316,30 @@ func TestMalformedFrames(t *testing.T) {
 	}
 }
 func TestMediaPolicyRejectsNewMediaBeforeDial(t *testing.T) {
-    s := testServer(t)
-    d := newDevice(t, s)
-    _, response := access(t, s, d)
-    token := signedResult(t, s, response)["token"].(string)
-    enabled := true
-    if err := s.setPolicy(nil, "", nil, &enabled); err != nil { t.Fatal(err) }
-    s.dial = func(context.Context, string, string) (net.Conn, error) { return nil, io.EOF }
-    for traffic, want := range map[string]int{"media":409, "":409, "voice":502, "control":502} {
-        req := connectRequest(t, s, d, token, "149.154.167.50", 443)
-        req.Header.Set("Connection", "Upgrade")
-        req.Header.Set("Upgrade", "websocket")
-        req.Header.Set("Sec-WebSocket-Version", "13")
-        req.Header.Set("Sec-WebSocket-Protocol", protocol)
-        req.Header.Set("Sec-WebSocket-Key", base64.StdEncoding.EncodeToString(make([]byte,16)))
-        req.Header.Set("X-Astra-Traffic", traffic)
-        result := httptest.NewRecorder()
-        s.tunnelHandler(result, req)
-        if result.Code != want { t.Fatalf("traffic %q: got %d want %d", traffic, result.Code, want) }
-    }
+	s := testServer(t)
+	d := newDevice(t, s)
+	_, response := access(t, s, d)
+	token := signedResult(t, s, response)["token"].(string)
+	enabled := true
+	if err := s.setPolicy(nil, "", nil, &enabled); err != nil {
+		t.Fatal(err)
+	}
+	s.dial = func(context.Context, string, string) (net.Conn, error) { return nil, io.EOF }
+	for traffic, want := range map[string]int{"media": 409, "": 409, "voice": 502, "control": 502} {
+		req := connectRequest(t, s, d, token, "149.154.167.50", 443)
+		req.URL.RawQuery = "ip=149.154.167.50&port=443"
+		req.Header.Set("Connection", "Upgrade")
+		req.Header.Set("Upgrade", "websocket")
+		req.Header.Set("Sec-WebSocket-Version", "13")
+		req.Header.Set("Sec-WebSocket-Protocol", protocol)
+		req.Header.Set("Sec-WebSocket-Key", base64.StdEncoding.EncodeToString(make([]byte, 16)))
+		req.Header.Set("X-Astra-Traffic", traffic)
+		result := httptest.NewRecorder()
+		s.tunnelHandler(result, req)
+		if result.Code != want {
+			t.Fatalf("traffic %q: got %d want %d", traffic, result.Code, want)
+		}
+	}
 }
 
 func TestTLSTunnelAndImmediateAdministrativeClose(t *testing.T) {

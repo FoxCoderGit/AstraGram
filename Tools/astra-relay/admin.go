@@ -85,10 +85,10 @@ func (s *relayServer) adminHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var request struct {
-		Enabled *bool  `json:"enabled"`
-        BlockMedia *bool `json:"block_media"`
-		Device  string `json:"device"`
-		Denied  *bool  `json:"denied"`
+		Enabled    *bool  `json:"enabled"`
+		BlockMedia *bool  `json:"block_media"`
+		Device     string `json:"device"`
+		Denied     *bool  `json:"denied"`
 	}
 	if !readJSON(w, r, &request) {
 		return

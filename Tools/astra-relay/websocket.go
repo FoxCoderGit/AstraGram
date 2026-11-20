@@ -21,7 +21,7 @@ type wsStream struct {
 	reader          *bufio.Reader
 	upstream        net.Conn
 	device, ip      string
-    trafficClass    string
+	trafficClass    string
 	authorizedUntil int64
 	traffic         func(bool, int)
 	writer          sync.Mutex

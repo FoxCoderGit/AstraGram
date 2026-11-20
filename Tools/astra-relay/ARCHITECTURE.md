@@ -1,5 +1,7 @@
 # AstraRelay
 
+Build 139 labels tgnet tunnels as control, file transfer, or voice-message transfer. The owner-panel media switch persists the policy on the relay. Enabling it closes existing media and unclassified tunnels immediately. The relay rejects new media and unclassified handshakes before dialing Telegram. Updated clients route rejected media directly and recheck eligibility after a minute. Older clients fall back to direct Telegram for all traffic. The authenticated client supplies the category because MTProto remains opaque to the relay.
+
 Build 132 counts accepted WSS streams with a scoped lifetime in the native transport. A failed auxiliary connection cannot start the global technical recovery timer while an established stream remains. After the last established stream closes, failed attempts again use the 30-second recovery and one-hour cooldown. Administrative denials and permission expiry still override active streams. A one-time upgrade migration removes cooldowns produced by the previous accounting bug without shortening administrative denials.
 
 Build 131 deduplicates network callbacks by active network identity, connectivity and VPN state. A failed Country.is lookup falls back to `https://ipwho.is/` (`success` and `country_code`), with the same one-hour cache. An unknown exit remains ineligible. Operational logcat diagnostics use the AstraRelay tag and contain state and exception class names, never tokens, IP addresses or account identifiers.
