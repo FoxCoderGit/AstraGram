@@ -315,6 +315,44 @@ func TestMalformedFrames(t *testing.T) {
 		}
 	}
 }
+func TestMediaPolicyClosesOnlyRestrictedExistingTunnels(t *testing.T) {
+	s := testServer(t)
+	remote := map[string]net.Conn{}
+	for _, class := range []string{"media", "", "control", "voice"} {
+		server, client := net.Pipe()
+		upstream, other := net.Pipe()
+		defer server.Close()
+		defer client.Close()
+		defer upstream.Close()
+		defer other.Close()
+		stream := &wsStream{conn: server, upstream: upstream, trafficClass: class, done: make(chan struct{})}
+		s.active[stream] = true
+		remote[class] = client
+	}
+	enabled := true
+	if err := s.setPolicy(nil, "", nil, &enabled); err != nil {
+		t.Fatal(err)
+	}
+	for _, class := range []string{"media", ""} {
+		client := remote[class]
+		_ = client.SetReadDeadline(time.Now().Add(time.Second))
+		var frame [4]byte
+		if _, err := io.ReadFull(client, frame[:]); err != nil || frame[0] != 0x88 || binary.BigEndian.Uint16(frame[2:]) != 1012 {
+			t.Fatalf("restricted tunnel %q was not closed: %v", class, err)
+		}
+	}
+	for _, class := range []string{"control", "voice"} {
+		client := remote[class]
+		_ = client.SetReadDeadline(time.Now().Add(50 * time.Millisecond))
+		var frame [1]byte
+		n, err := client.Read(frame[:])
+		timeout, ok := err.(net.Error)
+		if n != 0 || !ok || !timeout.Timeout() {
+			t.Fatalf("allowed tunnel %q was interrupted: %v", class, err)
+		}
+	}
+}
+
 func TestMediaPolicyRejectsNewMediaBeforeDial(t *testing.T) {
 	s := testServer(t)
 	d := newDevice(t, s)
