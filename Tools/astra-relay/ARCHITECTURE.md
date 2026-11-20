@@ -1,5 +1,7 @@
 # AstraRelay
 
+Build 132 counts accepted WSS streams with a scoped lifetime in the native transport. A failed auxiliary connection cannot start the global technical recovery timer while an established stream remains. After the last established stream closes, failed attempts again use the 30-second recovery and one-hour cooldown. Administrative denials and permission expiry still override active streams. A one-time upgrade migration removes cooldowns produced by the previous accounting bug without shortening administrative denials.
+
 Build 131 deduplicates network callbacks by active network identity, connectivity and VPN state. A failed Country.is lookup falls back to `https://ipwho.is/` (`success` and `country_code`), with the same one-hour cache. An unknown exit remains ineligible. Operational logcat diagnostics use the AstraRelay tag and contain state and exception class names, never tokens, IP addresses or account identifiers.
 
 Scope: native tgnet TCP connections, including generic RPC, media/CDN uploads and downloads, and push connections. Voice/video WebRTC media is excluded by the owner's choice. No device-wide network interception, VPN, SOCKS or MTProto-proxy protocol is used.
