@@ -22,7 +22,7 @@ The service uses an isolated systemd unit and a dedicated TLS port; existing HTT
 
 ## Deployment and operation
 
-The current endpoint is `verification.codebyfox.ru:9446`; port 443 remains assigned to the existing service. `config.example.json` and `astra-relay.service` show the production paths. The unit reads TLS and signing material through systemd credentials, runs as `astra-relay`, and stores only its token MAC key and administrative policy in `/var/lib/astra-relay`. The `ghostgram-license` service user belongs to the relay group for access to `/run/astra-relay/admin.sock` (0660).
+The current endpoint is `vpn.codebyfox.ru:9446`; port 443 remains assigned to the existing service. `config.example.json` and `astra-relay.service` show the production paths. The unit reads TLS and signing material through systemd credentials, runs as `astra-relay`, and stores only its token MAC key and administrative policy in `/var/lib/astra-relay`. The `ghostgram-license` service user belongs to the relay group for access to `/run/astra-relay/admin.sock` (0660).
 
 Build with Go 1.22 or later: `go test -race ./...`, then `go build -trimpath -ldflags="-s -w" -o astra-relay .`. The root-only `install_server.py` expects the compiled binary, service/config templates, reviewed `admin_web.baseline.py` and `admin_web.relay.py`, `relay_control.py`, and `relay.js` in a staging directory. It backs up the existing admin files and applies only the new route blocks, preserving independent server changes. Do not include VPS credentials or signing keys in staging source exports.
 

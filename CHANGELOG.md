@@ -1,5 +1,12 @@
 # Changelog
 
+## 13.2.2-astra.133
+
+- Move AstraRelay control and WSS identity to vpn.codebyfox.ru:9446; resolve the signed hostname through DNS while retaining certificate pinning.
+- Bound attachment-history RAM caches and pending observations, and query the indexed database on demand without deleting history.
+- Release the chat UI during background yt-dlp downloads and cancel automatic sending if the original Telegram account has logged out or its slot has changed owner.
+- Keep volume keys from starting visible chat videos/voice messages; normal volume adjustment and call handling remain available.
+
 ## 13.2.2-astra.132
 
 - Prevent one failed auxiliary Telegram connection from disabling every AstraRelay tunnel while established streams remain connected.

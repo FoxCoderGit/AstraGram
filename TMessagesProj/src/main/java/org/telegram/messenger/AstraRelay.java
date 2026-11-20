@@ -34,7 +34,7 @@ import javax.net.ssl.HttpsURLConnection;
 @Keep
 public final class AstraRelay {
     private static final long DAY=86400000L,HOUR=3600000L;
-    private static final String CONTROL="https://verification.codebyfox.ru:9446";
+    private static final String CONTROL="https://vpn.codebyfox.ru:9446";
     private static final DispatchQueue queue=new DispatchQueue("AstraRelayPolicy");
     private static final AtomicInteger denialSequence=new AtomicInteger();
     private static final AtomicBoolean accessRequestQueued=new AtomicBoolean();
@@ -277,7 +277,15 @@ public final class AstraRelay {
             if(address.isAnyLocalAddress()||address.isLoopbackAddress()||address.isLinkLocalAddress()||address.isSiteLocalAddress()||address.isMulticastAddress())throw new SecurityException("Public endpoint required");
         }
         for(int i=0;i<pins.length();i++)if(!pins.getString(i).matches("[0-9a-f]{64}"))throw new SecurityException("Invalid pin");
-        return value;
+        // Resolve the signed hostname instead of connecting to a fixed deployment IP.
+        // Keep the original signed JSON intact for signature checks and persistence.
+        JSONArray resolved=new JSONArray();
+        for(InetAddress address:InetAddress.getAllByName(host)){
+            if(address.isAnyLocalAddress()||address.isLoopbackAddress()||address.isLinkLocalAddress()||address.isSiteLocalAddress()||address.isMulticastAddress())continue;
+            resolved.put(address.getHostAddress());if(resolved.length()==8)break;
+        }
+        if(resolved.length()==0)throw new SecurityException("Public relay DNS required");
+        return new JSONObject(value.toString()).put("ips",resolved);
     }
     private static JSONObject post(String path,JSONObject value)throws Exception{
         HttpsURLConnection connection=(HttpsURLConnection)new URL(CONTROL+path).openConnection();

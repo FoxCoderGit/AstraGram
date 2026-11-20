@@ -7,7 +7,7 @@
   "policy_file": "/var/lib/astra-relay/policy.json",
   "admin_socket": "/run/astra-relay/admin.sock",
   "endpoint": {
-    "host": "verification.codebyfox.ru",
+    "host": "vpn.codebyfox.ru",
     "ips": ["93.88.204.2"],
     "port": 9446,
     "path": "/v1/tunnel"

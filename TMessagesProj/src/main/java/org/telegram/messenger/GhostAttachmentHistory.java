@@ -11,8 +11,8 @@ import org.telegram.tgnet.TLRPC;
 /** Remembers references seen by this installation, not Telegram's global upload history. */
 public final class GhostAttachmentHistory {
     private static final DispatchQueue queue = new DispatchQueue("ghostAttachmentHistory");
-    private static final ConcurrentHashMap<String, Reference> first = new ConcurrentHashMap<>();
-    private static final HashSet<String> recorded = new HashSet<>(); // queue only
+    private static final android.util.LruCache<String, Reference> first = new android.util.LruCache<>(4096);
+    private static final android.util.LruCache<String, Boolean> recorded = new android.util.LruCache<>(4096); // queue only
     private static final java.util.Set<String> submitted = ConcurrentHashMap.newKeySet();
     private static final Runnable notifyChanged = () -> {
         for (int account = 0; account < UserConfig.MAX_ACCOUNT_COUNT; account++) {
@@ -33,15 +33,7 @@ public final class GhostAttachmentHistory {
                     }
                     public void onUpgrade(SQLiteDatabase db, int oldVersion, int newVersion) {}
                 };
-                try (Cursor c = helper.getReadableDatabase().rawQuery("SELECT media,dialog,mid,date FROM refs", null)) {
-                    while (c.moveToNext()) {
-                        String key = c.getString(0);
-                        Reference value = new Reference(c.getLong(1), c.getInt(2), c.getInt(3));
-                        recorded.add(key + ":" + value.dialog + ":" + value.id);
-                        add(key, value);
-                    }
-                }
-                refresh();
+                helper.getWritableDatabase().execSQL("CREATE INDEX IF NOT EXISTS refs_first ON refs(media,date,mid,dialog)");
             } catch (Exception e) { FileLog.e(e); }
         });
     }
@@ -64,22 +56,27 @@ public final class GhostAttachmentHistory {
         start();
         Reference value = new Reference(message.getDialogId(), message.getId(), message.messageOwner.date);
         String identity = key + ":" + value.dialog + ":" + value.id;
-        if (!submitted.add(identity)) return;
+        synchronized (submitted) {
+            if (submitted.size() >= 2048 || !submitted.add(identity)) return;
+        }
         queue.postRunnable(() -> {
-            if (helper == null || !recorded.add(key + ":" + value.dialog + ":" + value.id)) return;
             try {
+                if (helper == null || recorded.get(identity) != null && first.get(key) != null) return;
                 ContentValues values = new ContentValues();
                 values.put("media", key); values.put("dialog", value.dialog); values.put("mid", value.id); values.put("date", value.date);
                 helper.getWritableDatabase().insertWithOnConflict("refs", null, values, SQLiteDatabase.CONFLICT_IGNORE);
                 Reference previous = first.get(key);
-                add(key, value);
-                if (previous != null && !previous.same(value)) refresh();
+                try (Cursor c = helper.getReadableDatabase().rawQuery("SELECT dialog,mid,date FROM refs WHERE media=? ORDER BY date,mid,dialog LIMIT 1", new String[]{key})) {
+                    if (c.moveToFirst()) {
+                        Reference earliest = new Reference(c.getLong(0), c.getInt(1), c.getInt(2));
+                        first.put(key, earliest);
+                        if (previous == null || !previous.same(earliest)) refresh();
+                    }
+                }
+                recorded.put(identity, Boolean.TRUE);
             } catch (Exception e) { FileLog.e(e); }
+            finally { synchronized (submitted) { submitted.remove(identity); } }
         });
-    }
-
-    private static void add(String key, Reference value) {
-        first.compute(key, (ignored, previous) -> previous == null || value.before(previous) ? value : previous);
     }
 
     public static boolean isRepeated(MessageObject message) {

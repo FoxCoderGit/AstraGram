@@ -17,7 +17,7 @@ import urllib.request
 from cryptography.hazmat.primitives import hashes,serialization
 from cryptography.hazmat.primitives.asymmetric import ec,padding
 
-HOST='verification.codebyfox.ru'
+HOST='vpn.codebyfox.ru'
 PORT=9446
 b64=lambda raw:base64.urlsafe_b64encode(raw).decode().rstrip('=')
 unb64=lambda value:base64.urlsafe_b64decode(value+'='*(-len(value)%4))

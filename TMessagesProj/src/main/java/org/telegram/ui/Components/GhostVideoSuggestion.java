@@ -5,6 +5,7 @@ import android.view.*;
 import android.widget.*;
 import android.text.TextUtils;
 import java.io.File;
+import java.lang.ref.WeakReference;
 import java.util.ArrayList;
 import java.util.regex.*;
 import org.telegram.messenger.*;
@@ -80,21 +81,30 @@ public final class GhostVideoSuggestion {
         dismissed=url;
         input.setFieldText(caption);
         show(false);
-        backgroundTask=GhostBackgroundTasks.create("Загрузка видео",()->{if(job!=null)job.cancel();});
+        final WeakReference<GhostVideoSuggestion> owner=new WeakReference<>(this);
+        final GhostVideoDownloader.Job[] running={null};
+        backgroundTask=GhostBackgroundTasks.create("Загрузка видео",()->{
+            if(running[0]!=null)running[0].cancel();
+            GhostVideoSuggestion ui=owner.get();if(ui!=null){ui.busy=false;ui.job=null;}
+        });
         final GhostBackgroundTasks.Task task=backgroundTask;
         busy=true;title.setText("Загрузка видео");subtitle.setText("Получение информации…");
-        job=GhostVideoDownloader.download(url,account,new GhostVideoDownloader.Listener(){
-            @Override public void progress(String text){task.progress(text,-1);if(!destroyed){int newline=text.indexOf('\n');if(newline>=0){title.setText(text.substring(0,newline));subtitle.setText(text.substring(newline+1));}else subtitle.setText(text);}}
+        job=GhostVideoDownloader.download(url,account,downloadListener(owner,task,account,UserConfig.getInstance(account).getClientUserId(),dialogId,caption));
+        running[0]=job;
+    }
+    private static GhostVideoDownloader.Listener downloadListener(WeakReference<GhostVideoSuggestion> owner,GhostBackgroundTasks.Task task,int account,long accountOwner,long dialogId,String caption){
+        return new GhostVideoDownloader.Listener(){
+            @Override public void progress(String text){task.progress(text,-1);GhostVideoSuggestion ui=owner.get();if(ui!=null&&!ui.destroyed){int newline=text.indexOf('\n');if(newline>=0){ui.title.setText(text.substring(0,newline));ui.subtitle.setText(text.substring(newline+1));}else ui.subtitle.setText(text);}}
             @Override public void ready(File video){
-                busy=false;job=null;if(!destroyed)show(false);
-                if(!GhostOptionalFeatures.enabled(GhostOptionalFeatures.VIDEO)){GhostVideoDownloader.discard(video);task.finish("Отменено",null);return;}
+                GhostVideoSuggestion ui=owner.get();if(ui!=null){ui.busy=false;ui.job=null;if(!ui.destroyed)ui.show(false);}
+                if(!GhostOptionalFeatures.enabled(GhostOptionalFeatures.VIDEO)||accountOwner==0||!UserConfig.getInstance(account).isClientActivated()||UserConfig.getInstance(account).getClientUserId()!=accountOwner){GhostVideoDownloader.discard(video);task.finish("Отменено",null);return;}
                 ArrayList<SendMessagesHelper.SendingMediaInfo> media=new ArrayList<>();SendMessagesHelper.SendingMediaInfo item=new SendMessagesHelper.SendingMediaInfo();
                 item.path=video.getAbsolutePath();item.caption=caption;item.isVideo=true;item.canDeleteAfter=true;media.add(item);
                 SendMessagesHelper.prepareSendingMedia(AccountInstance.getInstance(account),media,dialogId,null,null,null,null,false,false,null,true,0,0,0,false,null,null,0,false,0,0,null);
                 task.finish("Видео добавлено в отправку",null);
             }
-            @Override public void failed(String message){busy=false;job=null;task.finish("Не удалось загрузить видео",null);if(destroyed)return;title.setText("Не удалось загрузить видео");subtitle.setText("Нажмите, чтобы повторить · × — оставить ссылку");if(chat.getParentActivity()!=null)chat.showDialog(new AlertDialog.Builder(chat.getParentActivity(),chat.getResourceProvider()).setTitle("yt-dlp").setMessage(message).setPositiveButton("OK",null).create());}
-        });
+            @Override public void failed(String message){task.finish("Не удалось загрузить видео",null);GhostVideoSuggestion ui=owner.get();if(ui==null)return;ui.busy=false;ui.job=null;if(ui.destroyed)return;ui.title.setText("Не удалось загрузить видео");ui.subtitle.setText("Нажмите, чтобы повторить · × — оставить ссылку");if(ui.chat.getParentActivity()!=null)ui.chat.showDialog(new AlertDialog.Builder(ui.chat.getParentActivity(),ui.chat.getResourceProvider()).setTitle("yt-dlp").setMessage(message).setPositiveButton("OK",null).create());}
+        };
     }
     public void destroy(){destroyed=true;generation++;if(delayed!=null)AndroidUtilities.cancelRunOnUIThread(delayed);}
 }
