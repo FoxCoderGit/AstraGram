@@ -1,5 +1,10 @@
 # Changelog
 
+## 13.2.2-astra.140
+
+- Fix downloading and cancellation bookkeeping for the dedicated voice-message connection.
+- Bind country lookups to the active Android network, discard results from previous networks and respond to VPN and link address changes.
+
 ## 13.2.2-astra.139
 
 - Add an AstraRelay admin switch that routes photos, video, music and files directly while keeping voice messages eligible for the relay.

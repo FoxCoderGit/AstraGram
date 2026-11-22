@@ -92,7 +92,8 @@ public class ConnectionsManager extends BaseController {
     public final static int ConnectionTypeDownload2 = ConnectionTypeDownload | (1 << 16);
     // Keep in sync with DOWNLOAD_CONNECTIONS_COUNT in tgnet/Defines.h.
     public final static int DownloadConnectionsCount = 8;
-    public final static int AstraVoiceConnectionIndex = 8;
+    public final static int AstraVoiceConnectionIndex = DownloadConnectionsCount;
+    public final static int TotalDownloadConnectionsCount = AstraVoiceConnectionIndex + 1;
     // Keep in sync with UPLOAD_CONNECTIONS_COUNT in tgnet/Defines.h.
     public final static int UploadConnectionsCountPremium = 8;
 

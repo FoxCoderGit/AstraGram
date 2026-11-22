@@ -6,8 +6,10 @@ import android.content.ComponentName;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.net.ConnectivityManager;
+import android.net.LinkProperties;
 import android.net.Network;
 import android.net.NetworkCapabilities;
+import android.net.NetworkRequest;
 import android.os.SystemClock;
 import android.provider.Settings;
 import android.util.Base64;
@@ -18,6 +20,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.InetAddress;
+import java.net.Proxy;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.security.KeyFactory;
@@ -26,6 +29,7 @@ import java.security.PublicKey;
 import java.security.Signature;
 import java.security.spec.X509EncodedKeySpec;
 import java.util.ArrayList;
+import java.util.Objects;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicBoolean;
 import javax.net.ssl.HttpsURLConnection;
@@ -34,14 +38,17 @@ import javax.net.ssl.HttpsURLConnection;
 @Keep
 public final class AstraRelay {
     private static final long DAY=86400000L,HOUR=3600000L;
+    private static final long COUNTRY_CACHE_MS = 15 * 60 * 1000L;
     private static final String CONTROL="https://vpn.codebyfox.ru:9446";
     private static final DispatchQueue queue=new DispatchQueue("AstraRelayPolicy");
     private static final AtomicInteger denialSequence=new AtomicInteger();
     private static final AtomicBoolean accessRequestQueued=new AtomicBoolean();
     private static final AtomicInteger networkGeneration=new AtomicInteger();
     private static long countryUntil;
+    private static int countryGeneration = -1;
     private static String country="";
-    private static String networkIdentity="",lastDiagnostic="";
+    private static RelayNetwork relayNetwork = new RelayNetwork(null, false, "");
+    private static String lastDiagnostic="";
     private static Context context;
     private static SharedPreferences prefs;
     private static PublicKey policyKey;
@@ -55,6 +62,27 @@ public final class AstraRelay {
     private static long accessFailureSince=-1;
     private static long lastSuccessfulRefresh=-10000;
     private static final Runnable wakeTask=()->wake(null);
+    private static final Runnable checkNetwork = AstraRelay::networkChanged;
+    private static final Runnable refreshNetwork = () -> {
+        applyNative();
+        refresh(false);
+    };
+
+    private static final class RelayNetwork {
+        final Network network;
+        final boolean vpn;
+        final String addresses;
+
+        RelayNetwork(Network network, boolean vpn, String addresses) {
+            this.network = network;
+            this.vpn = vpn;
+            this.addresses = addresses;
+        }
+
+        boolean sameAs(RelayNetwork other) {
+            return Objects.equals(network, other.network) && vpn == other.vpn && addresses.equals(other.addresses);
+        }
+    }
 
     public static void installNativeGate(Context application) {
         context=application.getApplicationContext();
@@ -80,27 +108,57 @@ public final class AstraRelay {
         try{
             ConnectivityManager manager=(ConnectivityManager)context.getSystemService(Context.CONNECTIVITY_SERVICE);
             ConnectivityManager.NetworkCallback callback=new ConnectivityManager.NetworkCallback(){
-                @Override public void onAvailable(Network network){networkChanged();}
-                @Override public void onLost(Network network){networkChanged();}
-                @Override public void onCapabilitiesChanged(Network network,NetworkCapabilities capabilities){networkChanged();}
+                @Override public void onAvailable(Network network){scheduleNetworkCheck();}
+                @Override public void onLost(Network network){scheduleNetworkCheck();}
+                @Override public void onCapabilitiesChanged(Network network,NetworkCapabilities capabilities){scheduleNetworkCheck();}
+                @Override public void onLinkPropertiesChanged(Network network,LinkProperties properties){scheduleNetworkCheck();}
             };
-            if(android.os.Build.VERSION.SDK_INT>=24)manager.registerDefaultNetworkCallback(callback);
-            else manager.registerNetworkCallback(new android.net.NetworkRequest.Builder().addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET).build(),callback);
+            manager.registerDefaultNetworkCallback(callback);
+            manager.registerNetworkCallback(new NetworkRequest.Builder()
+                    .removeCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)
+                    .addTransportType(NetworkCapabilities.TRANSPORT_VPN).build(),
+                    new ConnectivityManager.NetworkCallback() {
+                        @Override public void onAvailable(Network network) { scheduleNetworkCheck(); }
+                        @Override public void onLost(Network network) { scheduleNetworkCheck(); }
+                    });
         }catch(Throwable ignored){}
     }
 
-    private static synchronized void networkChanged(){
-        if(!initialized)return;
-        String identity="";
-        try{
-            ConnectivityManager manager=(ConnectivityManager)context.getSystemService(Context.CONNECTIVITY_SERVICE);
-            identity=String.valueOf(manager.getActiveNetwork())+":"+networkAvailable()+":"+GhostNetworkEnvironment.vpnActive(context);
-        }catch(Exception ignored){}
-        if(identity.equals(networkIdentity))return;
-        networkIdentity=identity;
+    private static void scheduleNetworkCheck() {
+        AndroidUtilities.cancelRunOnUIThread(checkNetwork);
+        AndroidUtilities.runOnUIThread(checkNetwork, 100);
+    }
+
+    private static boolean observeNetwork() {
+        RelayNetwork observed;
+        try {
+            ConnectivityManager manager = context.getSystemService(ConnectivityManager.class);
+            Network network = manager.getActiveNetwork();
+            LinkProperties links = network == null ? null : manager.getLinkProperties(network);
+            NetworkCapabilities capabilities = network == null ? null : manager.getNetworkCapabilities(network);
+            boolean vpn = (capabilities != null && capabilities.hasTransport(NetworkCapabilities.TRANSPORT_VPN))
+                    || GhostNetworkEnvironment.vpnActive(context);
+            ArrayList<String> addresses = new ArrayList<>();
+            if (links != null) {
+                for (android.net.LinkAddress address : links.getLinkAddresses()) addresses.add(address.toString());
+                java.util.Collections.sort(addresses);
+            }
+            observed = new RelayNetwork(network, vpn, addresses.toString());
+        } catch (Exception ignored) {
+            observed = new RelayNetwork(null, false, "");
+        }
+        if (observed.sameAs(relayNetwork)) return false;
+        relayNetwork = observed;
         networkGeneration.incrementAndGet();
         nativeSetRelayEligible(false);
-        queue.postRunnable(()->{countryUntil=0;applyNative();if(networkAvailable())refresh(false);});
+        return true;
+    }
+
+    private static synchronized void networkChanged() {
+        if (initialized && observeNetwork()) {
+            queue.cancelRunnable(refreshNetwork);
+            queue.postRunnable(refreshNetwork, 150);
+        }
     }
 
     public static void onLicenseChanged(){
@@ -213,42 +271,73 @@ public final class AstraRelay {
         schedule();
     }
 
-    private static boolean updateEligibility(){
-        if(GhostNetworkEnvironment.vpnActive(context)){diagnostic("direct: VPN");nativeSetRelayEligible(false);return false;}
-        int generation=networkGeneration.get();
-        long now=SystemClock.elapsedRealtime();
-        if(now>=countryUntil){
-            nativeSetRelayEligible(false);
-            HttpsURLConnection connection=null;
-            try{
-                connection=(HttpsURLConnection)new URL("https://api.country.is/").openConnection();
-                connection.setConnectTimeout(5000);connection.setReadTimeout(5000);connection.setInstanceFollowRedirects(false);
-                if(connection.getResponseCode()!=200)throw new java.io.IOException();
-                try(InputStream stream=connection.getInputStream()){
-                    country=new JSONObject(new String(read(stream,4096),StandardCharsets.UTF_8)).getString("country");
-                }
-                if(!country.matches("[A-Z]{2}"))throw new java.io.IOException();
-                countryUntil=SystemClock.elapsedRealtime()+HOUR;
-            }catch(Exception error){
-                country="";countryUntil=0;
-                diagnostic("country lookup failed: "+error.getClass().getSimpleName());
-                try{
-                    if(connection!=null)connection.disconnect();
-                    connection=(HttpsURLConnection)new URL("https://ipwho.is/").openConnection();
-                    connection.setConnectTimeout(5000);connection.setReadTimeout(5000);connection.setInstanceFollowRedirects(false);
-                    if(connection.getResponseCode()==200)try(InputStream stream=connection.getInputStream()){
-                        JSONObject response=new JSONObject(new String(read(stream,16384),StandardCharsets.UTF_8));
-                        String code=response.optString("country_code","");
-                        if(response.optBoolean("success",false)&&code.matches("[A-Z]{2}")){country=code;countryUntil=SystemClock.elapsedRealtime()+HOUR;}
-                    }
-                }catch(Exception fallback){diagnostic("fallback lookup failed: "+fallback.getClass().getSimpleName());}
-            }
-            finally{if(connection!=null)connection.disconnect();}
+    private static boolean updateEligibility() {
+        final RelayNetwork snapshot;
+        final int generation;
+        synchronized (AstraRelay.class) {
+            observeNetwork();
+            snapshot = relayNetwork;
+            generation = networkGeneration.get();
         }
-        boolean eligible=generation==networkGeneration.get()&&"RU".equals(country)&&!GhostNetworkEnvironment.vpnActive(context);
-        nativeSetRelayEligible(eligible);
-        diagnostic("country="+(country.isEmpty()?"unknown":country)+" relayEligible="+eligible);
-        return eligible;
+        if (snapshot.network == null || snapshot.vpn) {
+            diagnostic(snapshot.vpn ? "direct: VPN" : "direct: no default network");
+            return false;
+        }
+
+        String confirmedCountry = country;
+        boolean cached = countryGeneration == generation && SystemClock.elapsedRealtime() < countryUntil;
+        if (!cached) {
+            confirmedCountry = "";
+            try {
+                confirmedCountry = lookupCountry(snapshot.network, "https://api.country.is/", "country", false);
+            } catch (Exception error) {
+                diagnostic("country lookup failed: " + error.getClass().getSimpleName());
+                synchronized (AstraRelay.class) {
+                    if (observeNetwork()) queue.postRunnable(refreshNetwork);
+                    if (generation != networkGeneration.get()) return false;
+                }
+                try {
+                    confirmedCountry = lookupCountry(snapshot.network, "https://ipwho.is/", "country_code", true);
+                } catch (Exception fallback) {
+                    diagnostic("fallback lookup failed: " + fallback.getClass().getSimpleName());
+                }
+            }
+        }
+
+        synchronized (AstraRelay.class) {
+            if (observeNetwork()) queue.postRunnable(refreshNetwork);
+            if (generation != networkGeneration.get()) return false;
+            if (!cached) {
+                country = confirmedCountry;
+                countryGeneration = generation;
+                countryUntil = confirmedCountry.isEmpty() ? 0 : SystemClock.elapsedRealtime() + COUNTRY_CACHE_MS;
+            }
+            boolean eligible = "RU".equals(confirmedCountry);
+            nativeSetRelayEligible(eligible);
+            diagnostic("country=" + (confirmedCountry.isEmpty() ? "unknown" : confirmedCountry) + " relayEligible=" + eligible);
+            return eligible;
+        }
+    }
+
+    private static String lookupCountry(Network network, String endpoint, String field, boolean hasSuccess)
+            throws Exception {
+        HttpsURLConnection connection = (HttpsURLConnection) network.openConnection(new URL(endpoint), Proxy.NO_PROXY);
+        try {
+            connection.setConnectTimeout(4000);
+            connection.setReadTimeout(4000);
+            connection.setInstanceFollowRedirects(false);
+            if (connection.getResponseCode() != 200) throw new java.io.IOException("Country service unavailable");
+            try (InputStream stream = connection.getInputStream()) {
+                JSONObject response = new JSONObject(new String(read(stream, 16384), StandardCharsets.UTF_8));
+                String value = response.optString(field, "");
+                if ((hasSuccess && !response.optBoolean("success", false)) || !value.matches("[A-Z]{2}")) {
+                    throw new java.io.IOException("Invalid country response");
+                }
+                return value;
+            }
+        } finally {
+            connection.disconnect();
+        }
     }
 
     private static synchronized void diagnostic(String state){

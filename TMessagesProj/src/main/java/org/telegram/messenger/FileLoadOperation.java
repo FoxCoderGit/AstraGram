@@ -1464,7 +1464,7 @@ public class FileLoadOperation {
         FileLog.d("cancelRequests" + (fullyCancelled != null ? " with callback" : ""));
         if (requestInfos != null) {
             int[] waitingForCancelledCount = new int[1];
-            int[] waitingDownloadSize = new int[ConnectionsManager.DownloadConnectionsCount];
+            int[] waitingDownloadSize = new int[ConnectionsManager.TotalDownloadConnectionsCount];
             for (int a = 0; a < requestInfos.size(); a++) {
                 RequestInfo requestInfo = requestInfos.get(a);
                 if (requestInfo.requestToken != 0) {
@@ -1495,7 +1495,7 @@ public class FileLoadOperation {
                 }
             }
             for (int i = 0; i < waitingDownloadSize.length; i++) {
-                int connectionType = ConnectionsManager.ConnectionTypeDownload | ((voiceDocument ? ConnectionsManager.AstraVoiceConnectionIndex : i) << 16);
+                int connectionType = ConnectionsManager.ConnectionTypeDownload | (i << 16);
                 if (waitingDownloadSize[i] > getMaxCancelledBytesPerConnection())  {
                     int datacenterId = isCdn ? cdnDatacenterId : this.datacenterId;
                     ConnectionsManager.getInstance(currentAccount).discardConnection(datacenterId, connectionType);
@@ -2198,7 +2198,7 @@ public class FileLoadOperation {
 
     private void clearOperation(RequestInfo currentInfo, boolean preloadChanged, boolean acceptChunksAfterCancel) {
         long minOffset = Long.MAX_VALUE;
-        int[] waitingDownloadSize = new int[ConnectionsManager.DownloadConnectionsCount];
+        int[] waitingDownloadSize = new int[ConnectionsManager.TotalDownloadConnectionsCount];
         for (int a = 0; a < requestInfos.size(); a++) {
             RequestInfo info = requestInfos.get(a);
             minOffset = Math.min(info.offset, minOffset);
@@ -2236,7 +2236,7 @@ public class FileLoadOperation {
             }
         }
         for (int i = 0; i < waitingDownloadSize.length; i++) {
-            int connectionType = ConnectionsManager.ConnectionTypeDownload | ((voiceDocument ? ConnectionsManager.AstraVoiceConnectionIndex : i) << 16);
+            int connectionType = ConnectionsManager.ConnectionTypeDownload | (i << 16);
             if (waitingDownloadSize[i] > getMaxCancelledBytesPerConnection())  {
                 int datacenterId = isCdn ? cdnDatacenterId : this.datacenterId;
                 ConnectionsManager.getInstance(currentAccount).discardConnection(datacenterId, connectionType);
