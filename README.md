@@ -8,12 +8,12 @@
 
 ## Current release
 
-- Version: **13.2.2-astra.127**
+- Version: **13.2.2-astra.140**
 - Telegram base: **13.2.2** ([upstream source](https://github.com/DrKLO/Telegram/tree/21f7d109da6ab3506c9e9577f98c6a38771ab335)).
 - Android package: `org.ghostgram.messenger` - retained to support updates over earlier installed builds without deleting local application data.
 - Download: [GitHub Releases](https://github.com/FoxCoderGit/AstraGram/releases/latest)
 
-Local development builds 128–129 additionally include the Devices crash fix, a chat-menu action to open the oldest accessible message, and AstraRelay with owner-panel access controls. See [CHANGELOG.md](CHANGELOG.md) and the [relay architecture](Tools/astra-relay/ARCHITECTURE.md). These changes are not a new GitHub release until published separately.
+This release fixes cancellation of voice downloads and improves AstraRelay network detection. Recent additions include the message calculator, daily supporter badge updates and profile links by user ID. See [CHANGELOG.md](CHANGELOG.md).
 
 ## AstraGram additions
 
