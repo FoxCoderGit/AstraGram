@@ -7,7 +7,7 @@
 
 ## 13.2.2-astra.139
 
-- Add an AstraRelay admin switch that routes photos, video, music and files directly while keeping voice messages eligible for the relay.
+- Support routing photos, video, music and files directly when media is restricted on AstraRelay. Voice messages can still use the relay.
 
 ## 13.2.2-astra.138
 
@@ -61,7 +61,6 @@
 - Add AstraRelay: native tgnet connections use an authenticated TLS WebSocket relay while preserving Telegram's MTProto encryption. WebRTC call media is excluded.
 - Recover from technical relay failures for 30 seconds, fall back to direct Telegram, and retry after one hour. Signed administrative denials take effect immediately and are checked again after 24 hours.
 - Add device-key authentication, replay protection, signed endpoint/pin updates, Telegram-only destination restrictions and bounded connection/traffic buffers.
-- Add owner-panel controls for global relay access, individual devices, connection statistics and tunnel reconnection. Changes require owner authentication and CSRF protection and are recorded in the audit log.
 
 ## 13.2.2-astra.128
 

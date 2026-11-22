@@ -19,7 +19,7 @@ Starting with build 129, tgnet's Telegram message, file, media/CDN and backgroun
 
 Starting with build 130, relay use additionally requires no active Android VPN and a public IP identified as Russian. Other countries and failed/unknown IP lookups use direct Telegram. The country lookup uses HTTPS and is rechecked after network changes.
 
-Technical connection failures allow 30 seconds for recovery before direct Telegram is used, followed by another relay attempt after one hour. Administrative denial switches to direct Telegram immediately and is checked again after 24 hours. The app has no additional relay settings or notifications. The owner manages global and per-device access, live connection counts and tunnel reconnections in the web admin panel.
+Technical connection failures allow 30 seconds for recovery before direct Telegram is used, followed by another relay attempt after one hour. If the server denies relay access, the app switches to direct Telegram immediately and checks access again after 24 hours.
 
 ## Plugins
 
