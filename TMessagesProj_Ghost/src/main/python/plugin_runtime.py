@@ -130,16 +130,31 @@ def install_file(source_path):
     with _lock:
         _last_install_error = ''
         try:
+            import elyx_compat
+            if elyx_compat.is_archive(source_path):
+                elyx_compat.install(source_path, PluginsManager)
+                return True
             if _builtin_feature_plugin_id(source_path): return True
-            PluginsManager.load_plugin_from_file(source_path)
+            plugin = PluginsManager.load_plugin_from_file(source_path)
+            shutil.rmtree(elyx_compat.directory(PluginsManager, plugin.id), ignore_errors=True)
+            shutil.rmtree(elyx_compat.legacy_directory(PluginsManager, plugin.id), ignore_errors=True)
             return True
-        except Exception:
-            _last_install_error = traceback.format_exc()
+        except Exception as failure:
+            while failure.__cause__ is not None:
+                failure = failure.__cause__
+            detail = ''.join(traceback.TracebackException.from_exception(failure).format_exception_only()).strip()
+            if detail:
+                _last_install_error = detail + "\n\n" + traceback.format_exc()
+            else:
+                _last_install_error = traceback.format_exc()
             return False
 
 
 def validate_file(source_path):
     from plugins_manager import PluginsManager
+    import elyx_compat
+    if elyx_compat.is_archive(source_path):
+        return json.dumps(elyx_compat.validate(source_path), ensure_ascii=False)
     return json.dumps(PluginsManager.validate_plugin_from_file(source_path), ensure_ascii=False)
 
 
@@ -174,6 +189,7 @@ def plugins_json():
             item = dict(record["meta"])
             item.pop("path", None)
             item["enabled"] = record["enabled"]
+            item["structured"] = bool(getattr(record["instance"], "_structured", False))
             from com.exteragram.messenger import ExteraConfig
             item["pinned"] = bool(ExteraConfig.pinnedPlugins.contains(record['instance'].id))
             item["error"] = record["instance"].error_message or ""
@@ -628,22 +644,16 @@ def dispatch_app_event(event_type):
 
 
 def get_setting(plugin_id, key, default=None):
-    from com.exteragram.messenger.plugins import PluginsController
-    controller = PluginsController.getInstance()
+    import plugin_settings
     try:
-        if isinstance(default, bool): return bool(controller.getPluginSettingBoolean(plugin_id, key, default))
-        if isinstance(default, int): return int(controller.getPluginSettingInt(plugin_id, key, default))
-        return controller.getPluginSettingString(plugin_id, key, None if default is None else str(default))
+        return plugin_settings.get_setting(plugin_id, key, default)
     except Exception: return default
 
 
 def set_setting(plugin_id, key, value):
-    from com.exteragram.messenger.plugins import PluginsController
-    controller = PluginsController.getInstance()
+    import plugin_settings
     try:
-        if isinstance(value, bool): controller.setPluginSettingBoolean(plugin_id, key, value)
-        elif isinstance(value, int): controller.setPluginSettingInt(plugin_id, key, value)
-        else: controller.setPluginSettingString(plugin_id, key, None if value is None else str(value))
+        plugin_settings.set_setting(plugin_id, key, value)
         record = _plugins.get(plugin_id)
         if record:
             record.pop('settings_cache', None)
@@ -652,17 +662,23 @@ def set_setting(plugin_id, key, value):
 
 
 def export_settings(plugin_id):
-    from com.exteragram.messenger.plugins import PluginsController
-    values = PluginsController.getInstance().preferences.getAll()
-    prefix = 'plugin_setting_' + plugin_id + '_'
-    return {str(entry.getKey())[len(prefix):]: entry.getValue() for entry in values.entrySet()
-            if str(entry.getKey()).startswith(prefix)}
+    import plugin_settings
+    return plugin_settings.get_all_settings(plugin_id)
 
 
 def import_settings(plugin_id, settings):
+    import plugin_settings
     if not isinstance(settings, dict): return False
-    for key, value in settings.items(): set_setting(plugin_id, key, value)
-    return True
+    try:
+        plugin_settings.set_all_settings(plugin_id, settings)
+        record = _plugins.get(plugin_id)
+        if record:
+            record.pop('settings_cache', None)
+            record.pop('settings_pages', None)
+        return True
+    except Exception:
+        log(plugin_id, traceback.format_exc())
+        return False
 
 
 def _safe_settings(record, refresh=False):

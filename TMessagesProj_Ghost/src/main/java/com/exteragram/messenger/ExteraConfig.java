@@ -14,6 +14,10 @@ public final class ExteraConfig {
     public static volatile boolean pluginsSafeMode = preferences.getBoolean("pluginsSafeMode", false);
     public static Set<String> pinnedPlugins = new HashSet<>(preferences.getStringSet("pinnedPlugins", new HashSet<>()));
 
+    public static boolean getPluginsEngine() { return pluginsEngine; }
+    public static boolean getPluginsDevMode() { return pluginsDevMode; }
+    public static boolean getPluginsSafeMode() { return pluginsSafeMode; }
+
     public static void setPluginsEngine(boolean value) {
         pluginsEngine = value;
         preferences.edit().putBoolean("pluginsEngine", value).apply();

@@ -194,7 +194,7 @@ public class GhostPluginsActivity extends BaseFragment {
         AlertDialog.Builder builder = new AlertDialog.Builder(getParentActivity(), getResourceProvider())
                 .setTitle(plugin.name)
                 .setMessage(message.length() == 0 ? plugin.id : message.toString())
-                .setItems(new CharSequence[]{plugin.pinned?"Открепить":"Закрепить","Экспортировать .plugin","Открыть в…"},(dialog,which)->{
+                .setItems(new CharSequence[]{plugin.pinned?"Открепить":"Закрепить","Экспортировать плагин","Открыть в…"},(dialog,which)->{
                     if(which==0){PluginBridge.setPinned(plugin.id,!plugin.pinned);refreshPlugins();}
                     else PluginBridge.exportPlugin(getParentActivity(),plugin.id,which==2);
                 })
@@ -279,7 +279,8 @@ public class GhostPluginsActivity extends BaseFragment {
                 }
                 HeaderCell header=new HeaderCell(context,getResourceProvider());header.setHeight(36);header.setTextSize(13);header.setText(position==0?"Встроенные возможности":position==MANAGEMENT_HEADER?"Управление плагинами":"Установленные плагины");block.addView(header);content=block;
             } else if (type == 1) {
-                content=org.telegram.ui.Components.GhostSettingsCards.row(context,position==INSTALL_ROW?"Установить файл .plugin":"Перезагрузить плагины",null,"›",null,position==INSTALL_ROW?R.drawable.msg_download:R.drawable.msg_retry,null);
+                String title = position == INSTALL_ROW ? "Установить файл плагина" : "Перезагрузить плагины";
+                content=org.telegram.ui.Components.GhostSettingsCards.row(context,title,null,"›",null,position==RELOAD_ROW?R.drawable.msg_retry:R.drawable.msg_download,null);
             } else if (type == 2) {
                 if(position>=1&&position<=BUILTINS.length){
                     int[] icons={R.drawable.bot_music,R.drawable.msg_edit,R.drawable.msg_customize,R.drawable.msg_download,R.drawable.outline_shield_check};

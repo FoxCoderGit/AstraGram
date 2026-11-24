@@ -236,7 +236,10 @@ class AccountClient:
             return lambda *args, **kwargs: fn(*args, account=self.account, **kwargs)
         raise AttributeError(name)
 
-def get_client(account=None): return AccountClient(_resolve_account(account))
+def get_client(account=None):
+    if account is None:
+        account = get_hook_account()
+    return AccountClient(_resolve_account(account))
 
 
 from org.telegram.messenger import NotificationCenter

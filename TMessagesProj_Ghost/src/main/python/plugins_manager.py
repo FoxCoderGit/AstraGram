@@ -7,6 +7,7 @@ import sys
 import tempfile
 import traceback
 from packaging.version import parse, InvalidVersion
+from packaging.specifiers import InvalidSpecifier, SpecifierSet
 from base_plugin import (BasePlugin, AppEvent, HookResult, HookStrategy, PluginError,
                          PluginMetadata, XposedHook, MenuItemData, MenuItemType)
 
@@ -33,25 +34,42 @@ class PluginsManager:
     @staticmethod
     def _parse_metadata(content):
         values = {}
+        fields = ("id", "name", "description", "author", "version", "icon", "min_version",
+                  "app_version", "sdk_version", "category", "requirements")
         for node in ast.iter_child_nodes(ast.parse(content)):
-            if isinstance(node, ast.Assign) and isinstance(node.value, ast.Constant):
-                for target in node.targets:
-                    if isinstance(target, ast.Name) and target.id.startswith("__") and target.id.endswith("__"):
-                        values[target.id[2:-2]] = node.value.value
+            if not isinstance(node, (ast.Assign, ast.AnnAssign)) or node.value is None:
+                continue
+            targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+            for target in targets:
+                if not isinstance(target, ast.Name) or not target.id.startswith("__") or not target.id.endswith("__"):
+                    continue
+                key = target.id[2:-2]
+                if key in fields:
+                    try:
+                        values[key] = ast.literal_eval(node.value)
+                    except (TypeError, ValueError):
+                        continue
         for key in ("id", "name"):
             if not isinstance(values.get(key), str) or not values[key]:
                 raise PluginError("Plugin must define a non-empty __" + key + "__", values.get("id"))
-        return PluginMetadata(*(values.get(key) for key in
-                                ("id", "name", "description", "author", "version", "icon", "min_version")))
+        return PluginMetadata(**{key: values.get(key) for key in fields})
 
     @staticmethod
     def _check_min_version(metadata):
-        if metadata.min_version:
+        if metadata.app_version or metadata.min_version:
             from org.telegram.messenger import BuildVars
             try:
-                if parse(str(BuildVars.BUILD_VERSION_STRING)) < parse(metadata.min_version):
-                    raise PluginError("Plugin requires version " + metadata.min_version, metadata.id)
-            except InvalidVersion as error:
+                app = parse(str(BuildVars.BUILD_VERSION_STRING))
+                requirement = metadata.app_version or metadata.min_version
+                if not isinstance(requirement, str):
+                    raise PluginError("Plugin version requirement must be text", metadata.id)
+                if metadata.app_version:
+                    compatible = SpecifierSet(requirement).contains(app, prereleases=True)
+                else:
+                    compatible = app >= parse(requirement)
+                if not compatible:
+                    raise PluginError("Plugin requires app version " + requirement, metadata.id)
+            except (InvalidVersion, InvalidSpecifier) as error:
                 raise PluginError(str(error), metadata.id) from error
 
     @classmethod
@@ -59,7 +77,7 @@ class PluginsManager:
         with open(path, "rb") as source:
             metadata = cls._parse_metadata(source.read())
         cls._check_min_version(metadata)
-        return {key: getattr(metadata, key) for key in ("id", "name", "description", "author", "version", "icon")}
+        return vars(metadata).copy()
 
     @staticmethod
     def _destination(plugin_id):
@@ -98,32 +116,48 @@ class PluginsManager:
             cls.cleanup_plugin(instance.id)
 
     @classmethod
-    def load_plugin_from_file(cls, path):
+    def _prepare_dependencies(cls, metadata):
+        if metadata.requirements:
+            from plugin_dependencies import install
+            try:
+                install(metadata.requirements, cls._plugins_dir)
+            except Exception as error:
+                raise PluginError("Could not install Python dependencies: " + str(error), metadata.id) from error
+
+    @classmethod
+    def load_plugin_from_file(cls, path, structured=False):
         with open(path, "rb") as source:
             content = source.read()
         metadata = cls._parse_metadata(content)
         cls._check_min_version(metadata)
         destination = cls._destination(metadata.id)
+        cls._prepare_dependencies(metadata)
         module_name = metadata.id + "_temp_validation_mod_" + os.urandom(4).hex()
         with tempfile.TemporaryDirectory(prefix="plugintemp_" + metadata.id + "_", dir=cls._plugins_dir) as folder:
             temporary = os.path.join(folder, "plugin.py")
             with open(temporary, "wb") as output:
                 output.write(content)
             try:
-                cls._test_plugin_initialization(cls._class_from_module(temporary, module_name), metadata.id)
+                candidate = cls._class_from_module(temporary, module_name)
+                if not structured:
+                    cls._test_plugin_initialization(candidate, metadata.id)
             finally:
                 sys.modules.pop(module_name, None)
             # A failed preliminary validation never overwrites the installed file.
             if os.path.abspath(path) != os.path.abspath(destination):
                 shutil.copyfile(temporary, destination)
-            return cls.load_plugin(metadata.id + ".py", destination)
+            return cls.load_plugin(metadata.id + ".py", destination, structured=structured)
 
     @classmethod
-    def load_plugin(cls, file_name, file_path=None):
+    def load_plugin(cls, file_name, file_path=None, structured=None):
         path = file_path or os.path.join(cls._plugins_dir, file_name)
         with open(path, "rb") as source:
-            metadata = cls._parse_metadata(source.read())
+            content = source.read()
+        metadata = cls._parse_metadata(content)
+        if structured is None:
+            structured = b"from elyx_compat import load_plugin\nElyxPlugin = load_plugin(" in content.replace(b"\r\n", b"\n")
         cls._check_min_version(metadata)
+        cls._prepare_dependencies(metadata)
         enabled = cls._plugins[metadata.id].enabled if metadata.id in cls._plugins else cls._read_enabled(metadata.id)
         cls.unload_plugin(metadata.id)
         placeholder = BasePlugin()
@@ -136,18 +170,21 @@ class PluginsManager:
                 shutil.copy2(path, destination)
                 os.remove(path)
                 path = destination
-            sys.modules.pop(metadata.id, None)
-            plugin_class = cls._class_from_module(path, metadata.id)
-            cls._test_plugin_initialization(plugin_class, metadata.id)
+            module_name = "_astra_elyx_wrapper_" + metadata.id if structured else metadata.id
+            sys.modules.pop(module_name, None)
+            plugin_class = cls._class_from_module(path, module_name)
+            if not structured:
+                cls._test_plugin_initialization(plugin_class, metadata.id)
             instance = plugin_class()
             for key, value in vars(metadata).items(): setattr(instance, key, value)
             instance.enabled = enabled
             instance.initialized = False
             instance.error_message = None
+            instance._structured = structured
             cls._plugins[metadata.id] = instance
             cls._publish(instance)
             if enabled:
-                cls._safe_execute(instance, instance.on_plugin_load)
+                cls._safe_execute(instance, instance.on_plugin_load, handle_exceptions=not structured)
                 instance.initialized = True
             cls._save_enabled(metadata.id, enabled)
             cls._publish(instance)
@@ -212,7 +249,8 @@ class PluginsManager:
         if instance: instance._cleanup_hooks()
         import plugin_runtime
         plugin_runtime.cleanup_plugin(plugin_id)
-        sys.modules.pop(plugin_id, None)
+        if instance is None or not getattr(instance, "_structured", False):
+            sys.modules.pop(plugin_id, None)
 
     @classmethod
     def unload_plugin(cls, plugin_id, keep_entry=False):
@@ -223,6 +261,10 @@ class PluginsManager:
                 cls._safe_execute(instance, instance.on_plugin_unload)
         finally:
             cls.cleanup_plugin(plugin_id)
+            from elyx_compat import unload
+            unload(plugin_id)
+            if getattr(instance, "_structured", False):
+                sys.modules.pop("_astra_elyx_wrapper_" + plugin_id, None)
             instance.initialized = False
             if not keep_entry:
                 cls._plugins.pop(plugin_id, None)
@@ -235,6 +277,10 @@ class PluginsManager:
         cls.unload_plugin(plugin_id)
         path = cls._destination(plugin_id)
         if os.path.isfile(path): os.remove(path)
+        from elyx_compat import directory, legacy_directory
+        for package in (directory(cls, plugin_id), legacy_directory(cls, plugin_id)):
+            if package.is_dir():
+                shutil.rmtree(package)
         from com.exteragram.messenger.plugins import PluginsController
         PluginsController.getInstance().clearPluginSettingsPreferences(plugin_id)
         return True

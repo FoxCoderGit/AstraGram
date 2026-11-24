@@ -5,6 +5,7 @@ import json
 import sys
 import tempfile
 import types
+import zipfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -81,6 +82,15 @@ result = manager.execute_post_request_hook(['first', 'later'], 'TL_test', 0, 'ol
 check((result.response, result.error), ('old', 'error'))
 check(manager._parse_metadata(b'__id__="x"\n__name__="X"\n__version__="1"+"2"').version, None)
 check(manager._parse_metadata(b'__id__="x"\n__name__="X"\n__version__="1"\n__version__="2"').version, '2')
+modern = manager._parse_metadata(b'__id__: str="x"\n__name__="X"\n__app_version__=">=12.5.1,<13"\n__sdk_version__=">=1.4.4.3"\n__requirements__=["example>=2"]')
+check(modern.sdk_version, '>=1.4.4.3')
+check(modern.requirements, ['example>=2'])
+manager._check_min_version(modern)
+try:
+    manager._check_min_version(dataclasses.replace(modern, app_version='>=13'))
+    raise AssertionError('accepted unsupported app version')
+except base.PluginError:
+    pass
 
 builtins._ghost_plugin_trace = []
 code = '''import builtins
@@ -166,4 +176,92 @@ for vector in json.loads((ROOT / 'tests/plugins/fixtures/dev-protocol-vectors.js
 from ui.settings import Switch, Selector, Input, Text, Header, Divider
 check([entry.type for entry in (Switch('s', 'S', False), Selector('k', 'K', 0, ['x']), Input('i', 'I'), Text('T'), Header('H'), Divider())],
       ['switch', 'selector', 'input', 'text', 'header', 'divider'])
+
+
+class SettingsHost:
+    def __init__(self):
+        self.scopes = {}
+
+    def readPluginSettingsJson(self, plugin_id):
+        return json.dumps(self.scopes.get(plugin_id, {}))
+
+    def writePluginSettingJson(self, plugin_id, key, value):
+        self.scopes.setdefault(plugin_id, {})[key] = json.loads(value)
+
+    def replacePluginSettingsJson(self, plugin_id, values):
+        self.scopes[plugin_id] = json.loads(values)
+
+    def clearPluginSettingsPreferences(self, plugin_id):
+        self.scopes.pop(plugin_id, None)
+
+
+settings_host = SettingsHost()
+settings_host.removeHooksByPluginId = lambda plugin_id: None
+settings_host.invalidatePluginSettings = lambda plugin_id: None
+module('com.exteragram.messenger.plugins', PluginsController=types.SimpleNamespace(getInstance=lambda: settings_host))
+import plugin_settings
+plugin_settings.set_setting('first', 'nested', {'items': [True, None, 2.5]})
+plugin_settings.set_setting('second', 'active', True)
+check(runtime.get_setting('first', 'nested'), {'items': [True, None, 2.5]})
+check(runtime.get_setting('first', 'missing', 10), 10)
+check(runtime.import_settings('first', {'count': 1 << 40}), True)
+check(runtime.export_settings('first'), {'count': 1 << 40})
+plugin_settings.clear_settings('first')
+check(plugin_settings.get_all_settings('first'), {})
+check(plugin_settings.get_all_settings('second'), {'active': True})
+
+with tempfile.TemporaryDirectory() as directory:
+    root = Path(directory)
+    archive = root / 'library.elyx'
+    manager.init(root / 'plugins')
+    entry = '''import sys
+for name in list(sys.modules):
+    if name == 'astratestlib' or name.startswith('astratestlib.'):
+        del sys.modules[name]
+from astratestlib.src.api import VALUE
+from base_plugin import BasePlugin
+class Library(BasePlugin):
+    def on_plugin_load(self):
+        assert self.id == 'astratestlib'
+        self.value = VALUE
+'''
+    def write_library(main):
+        with zipfile.ZipFile(archive, 'w') as output:
+            output.writestr('refmap.json', json.dumps({'metainfo': 'metainfo.json', 'main': 'src/main.py'}))
+            output.writestr('metainfo.json', json.dumps({'id': 'astratestlib', 'name': 'Test library'}))
+            output.writestr('__init__.py', 'from .src.api import VALUE')
+            output.writestr('src/api.py', 'VALUE = 42')
+            output.writestr('src/main.py', main)
+
+    write_library(entry)
+    check(runtime.install_file(archive), True)
+    check(sys.modules['astratestlib'].VALUE, 42)
+    check(manager._plugins['astratestlib'].initialized, False)
+    manager.set_plugin_enabled('astratestlib', True)
+    check(manager._plugins['astratestlib'].value, 42)
+    write_library(entry + '\nimport missing_astra_test_library')
+    check(runtime.install_file(archive), False)
+    check(runtime.last_install_error().splitlines()[0],
+          "ModuleNotFoundError: No module named 'missing_astra_test_library'")
+    check(manager._plugins['astratestlib'].value, 42)
+    manager.shutdown()
+    manager.init(root / 'plugins')
+    check(manager._plugins['astratestlib'].value, 42)
+    manager.shutdown()
+
+from unittest.mock import Mock
+proxy = type('Proxy', (), {})
+module('java', dynamic_proxy=lambda interface: proxy)
+module('java.lang', Runnable=proxy)
+module('android.view', View=types.SimpleNamespace(OnClickListener=proxy, OnLongClickListener=proxy))
+module('client_utils', run_on_queue=lambda callback: callback())
+sys.modules['org.telegram.messenger'].AndroidUtilities = object()
+sys.modules['org.telegram.messenger'].ApplicationLoader = object()
+from android_utils import OnClickListener, OnLongClickListener
+view = object()
+callback = Mock(return_value=False)
+OnClickListener(callback).onClick(view)
+check(callback.call_args.args, (view,))
+check(OnLongClickListener(callback).onLongClick(view), False)
+check(callback.call_args.args, (view,))
 print('PASS:', count, 'plugin lifecycle / metadata / callback contract checks')

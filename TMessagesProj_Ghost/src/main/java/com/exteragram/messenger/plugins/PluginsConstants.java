@@ -2,6 +2,8 @@ package com.exteragram.messenger.plugins;
 
 /* JADX INFO: loaded from: classes.dex */
 public final class PluginsConstants {
+    public static final String PYTHON = "python";
+    public static final String ELYX = "elyx";
     public static final String APP_PAUSE = "app_pause";
     public static final String APP_RESUME = "app_resume";
     public static final String APP_START = "app_start";
@@ -99,6 +101,7 @@ public final class PluginsConstants {
     }
 
     public static final class Xposed {
+        public static final String HOOK_FILTERS = "__hook_filters__";
         public static final String AFTER_HOOKED_METHOD = "after_hooked_method";
         public static final String BEFORE_HOOKED_METHOD = "before_hooked_method";
         public static final String REPLACE_HOOKED_METHOD = "replace_hooked_method";

@@ -80,7 +80,7 @@ public final class PluginBridge {
         // Document providers often expose an opaque ID as the final URI segment
         // and omit the original extension. The runtime validates the UTF-8 source
         // and metadata after copying, so preserve install support for those URIs.
-        if (!name.endsWith(".plugin") && !name.endsWith(".py")) {
+        if (!isPluginFile(name) && !name.endsWith(".py")) {
             name += ".plugin";
         }
         File target = new File(directory, System.nanoTime() + "_" + name);
@@ -92,8 +92,10 @@ public final class PluginBridge {
                 return null;
             }
             byte[] buffer = new byte[32 * 1024];
-            int count;
+            int count, total = 0;
             while ((count = input.read(buffer)) != -1) {
+                total += count;
+                if (total > 10 * 1024 * 1024) throw new java.io.IOException("Plugin file exceeds 10 MB");
                 output.write(buffer, 0, count);
             }
         } catch (Exception error) {
@@ -104,6 +106,93 @@ public final class PluginBridge {
         }
         return target.getAbsolutePath();
     }
+
+    public static boolean isPluginFile(String name) {
+        if (name == null) return false;
+        String lower = name.toLowerCase(java.util.Locale.ROOT);
+        return lower.endsWith(".plugin") || lower.endsWith(".elyx") || lower.endsWith(".eaf");
+    }
+
+    public static boolean openMessagePlugin(org.telegram.ui.ActionBar.BaseFragment fragment, MessageObject message) {
+        if (message == null || !isPluginFile(message.getDocumentName()) || message.isSecretMedia()
+                || message.isSending() || message.isSendError() || fragment.getParentActivity() == null) return false;
+        org.telegram.tgnet.TLRPC.Document document = message.getDocument();
+        if (document == null) return false;
+        android.app.Activity activity = fragment.getParentActivity();
+        int max = message.getDocumentName().toLowerCase(java.util.Locale.ROOT).endsWith(".plugin") ? 2 : 10;
+        if (document.size <= 0 || document.size > max * 1024 * 1024) {
+            fragment.showDialog(new org.telegram.ui.ActionBar.AlertDialog.Builder(activity).setTitle("Файл плагина слишком большой")
+                    .setMessage("Допустимый размер — " + max + " МБ.").setPositiveButton("OK", null).create());
+            return true;
+        }
+        FileLoader loader = fragment.getFileLoader();
+        File file = android.text.TextUtils.isEmpty(message.messageOwner.attachPath) ? null : new File(message.messageOwner.attachPath);
+        if (!completePluginFile(file, document.size)) file = loader.getPathToMessage(message.messageOwner);
+        if (!completePluginFile(file, document.size)) file = loader.getPathToAttach(document, true);
+        if (completePluginFile(file, document.size)) {
+            showPluginInstallDialog(fragment, file.getAbsolutePath(), false, null);
+            return true;
+        }
+        new MessagePluginDownload(fragment, message, document).start();
+        return true;
+    }
+
+    private static boolean completePluginFile(File file, long size) {
+        return file != null && file.isFile() && file.length() == size;
+    }
+
+    private static final class MessagePluginDownload implements NotificationCenter.NotificationCenterDelegate {
+        final org.telegram.ui.ActionBar.BaseFragment fragment;
+        final MessageObject message;
+        final org.telegram.tgnet.TLRPC.Document document;
+        final org.telegram.ui.ActionBar.AlertDialog progress;
+        final Runnable timeout = () -> finish(null);
+        boolean closed;
+
+        MessagePluginDownload(org.telegram.ui.ActionBar.BaseFragment fragment, MessageObject message, org.telegram.tgnet.TLRPC.Document document) {
+            this.fragment = fragment;
+            this.message = message;
+            this.document = document;
+            progress = new org.telegram.ui.ActionBar.AlertDialog(fragment.getParentActivity(), 3);
+            progress.setMessage("Загрузка плагина…");
+            progress.setOnDismissListener(dialog -> close());
+        }
+
+        void start() {
+            fragment.getNotificationCenter().addObserver(this, NotificationCenter.fileLoaded);
+            fragment.getNotificationCenter().addObserver(this, NotificationCenter.fileLoadFailed);
+            AndroidUtilities.runOnUIThread(timeout, 60000);
+            progress.showDelayed(250);
+            fragment.getFileLoader().loadFile(document, message, 2, 0);
+        }
+
+        void close() {
+            if (closed) return;
+            closed = true;
+            fragment.getNotificationCenter().removeObserver(this, NotificationCenter.fileLoaded);
+            fragment.getNotificationCenter().removeObserver(this, NotificationCenter.fileLoadFailed);
+            AndroidUtilities.cancelRunOnUIThread(timeout);
+        }
+
+        void finish(File file) {
+            if (closed) return;
+            close();
+            progress.dismiss();
+            android.app.Activity activity = fragment.getParentActivity();
+            if (activity == null || activity.isFinishing()) return;
+            if (completePluginFile(file, document.size)) showPluginInstallDialog(fragment, file.getAbsolutePath(), false, null);
+            else fragment.showDialog(new org.telegram.ui.ActionBar.AlertDialog.Builder(activity).setTitle("Не удалось скачать плагин")
+                    .setPositiveButton("OK", null).create());
+        }
+
+        @Override public void didReceivedNotification(int id, int account, Object... args) {
+            if (account != message.currentAccount || args.length == 0 || !FileLoader.getAttachFileName(document).equals(args[0])) return;
+            File file = id == NotificationCenter.fileLoaded ? args.length > 1 && args[1] instanceof File ? (File) args[1]
+                    : fragment.getFileLoader().getPathToMessage(message.messageOwner) : null;
+            finish(file);
+        }
+    }
+
     public static boolean installPrepared(String path,boolean temporary) {
         try { return Boolean.TRUE.equals(invoke("installFile",new Class[]{String.class},path)); }
         finally { if(temporary)new File(path).delete(); }
@@ -117,13 +206,21 @@ public final class PluginBridge {
                     org.json.JSONObject metadata=new org.json.JSONObject(value instanceof String?(String)value:"{\"error\":\"Plugin validation failed\"}");
                     if(fragment.getParentActivity()==null){if(temporary)new File(path).delete();return;}
                     if(metadata.has("error")){if(temporary)new File(path).delete();fragment.showDialog(new org.telegram.ui.ActionBar.AlertDialog.Builder(fragment.getParentActivity()).setTitle("Ошибка плагина").setMessage(metadata.optString("error")).setPositiveButton("OK",null).create());return;}
-                    String id=metadata.getString("id");boolean update=new File(ApplicationLoader.applicationContext.getFilesDir(),"plugins/"+id+".py").exists();
+                    String id=metadata.getString("id");
+                    boolean update=new File(ApplicationLoader.applicationContext.getFilesDir(),"plugins/"+id+".py").exists();
+                    String requirements = metadata.optString("requirements", "");
+                    String details = metadata.optString("name")+"\n"+metadata.optString("author")+" · "+metadata.optString("version")+"\n\n"+metadata.optString("description");
+                    if (!metadata.isNull("requirements") && !requirements.isEmpty() && !"[]".equals(requirements)) details += "\n\nPython-зависимости: " + requirements;
                     org.telegram.ui.ActionBar.AlertDialog dialog=new org.telegram.ui.ActionBar.AlertDialog.Builder(fragment.getParentActivity()).setTitle(update?"Обновить плагин":"Установить плагин")
-                        .setMessage(metadata.optString("name")+"\n"+metadata.optString("author")+" · "+metadata.optString("version")+"\n\n"+metadata.optString("description"))
+                        .setMessage(details)
                         .setPositiveButton(update?"Обновить":"Установить",(alert,which)->{
-                            installing.set(true);Utilities.pluginsQueue.postRunnable(()->{
+                            installing.set(true);
+                            org.telegram.ui.ActionBar.AlertDialog progress = new org.telegram.ui.ActionBar.AlertDialog(fragment.getParentActivity(), 3);
+                            progress.setMessage("Установка плагина и зависимостей…");
+                            progress.showDelayed(250);
+                            Utilities.pluginsQueue.postRunnable(()->{
                                 boolean success=installPrepared(path,temporary);String error=getLastInstallError();
-                                AndroidUtilities.runOnUIThread(()->{if(finished!=null)finished.run();if(!success&&fragment.getParentActivity()!=null)fragment.showDialog(new org.telegram.ui.ActionBar.AlertDialog.Builder(fragment.getParentActivity()).setTitle("Ошибка плагина").setMessage(error).setPositiveButton("OK",null).create());});
+                                AndroidUtilities.runOnUIThread(()->{progress.dismiss();if(finished!=null)finished.run();if(!success&&fragment.getParentActivity()!=null)fragment.showDialog(new org.telegram.ui.ActionBar.AlertDialog.Builder(fragment.getParentActivity()).setTitle("Ошибка плагина").setMessage(error).setPositiveButton("OK",null).create());});
                             });
                         }).setNegativeButton("Отмена",null).create();
                     dialog.setOnDismissListener(alert->{if(temporary&&!installing.get())new File(path).delete();});fragment.showDialog(dialog);
@@ -206,13 +303,19 @@ public final class PluginBridge {
     public static void exportPlugin(android.app.Activity activity,String id,boolean open) {
         try {
             File directory=new File(ApplicationLoader.applicationContext.getFilesDir(),"plugins");
-            File source=new File(directory,id+".py");
+            File archive = new File(new File(new File(directory, "ElyxPlugins"), id), ".astra/source.elyx");
+            if (!archive.isFile()) {
+                archive = new File(new File(new File(directory, ".elyx"), id), "source.elyx");
+            }
+            boolean structured = archive.isFile();
+            File source=structured ? archive : new File(directory,id+".py");
             if(!source.getCanonicalPath().startsWith(directory.getCanonicalPath()+File.separator))throw new IllegalArgumentException("Invalid plugin path");
-            File temp=new File(ApplicationLoader.applicationContext.getFilesDir(),"temp");temp.mkdirs();File copy=new File(temp,id+".plugin");
+            File temp=new File(ApplicationLoader.applicationContext.getFilesDir(),"temp");temp.mkdirs();File copy=new File(temp,id+(structured?".elyx":".plugin"));
             try(java.io.InputStream input=new java.io.FileInputStream(source);java.io.OutputStream output=new FileOutputStream(copy)){byte[] buffer=new byte[16384];int count;while((count=input.read(buffer))!=-1)output.write(buffer,0,count);}
             android.net.Uri uri=androidx.core.content.FileProvider.getUriForFile(activity,ApplicationLoader.getApplicationId()+".provider",copy);
             android.content.Intent intent=new android.content.Intent(open?android.content.Intent.ACTION_VIEW:android.content.Intent.ACTION_SEND);
-            if(open)intent.setDataAndType(uri,"text/plain");else{intent.setType("application/x-plugin");intent.putExtra(android.content.Intent.EXTRA_STREAM,uri);}
+            String mime = structured ? "application/zip" : open ? "text/plain" : "application/x-plugin";
+            if(open)intent.setDataAndType(uri,mime);else{intent.setType(mime);intent.putExtra(android.content.Intent.EXTRA_STREAM,uri);}
             intent.addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION);activity.startActivity(android.content.Intent.createChooser(intent,id));
         }catch(Throwable error){FileLog.e(error);android.widget.Toast.makeText(activity,error.getMessage(),android.widget.Toast.LENGTH_LONG).show();}
     }

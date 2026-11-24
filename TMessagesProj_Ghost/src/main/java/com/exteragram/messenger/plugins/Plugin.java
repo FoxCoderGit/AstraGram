@@ -10,6 +10,7 @@ public class Plugin {
     private String author;
     private String description;
     private String errorMessage;
+    private String engine = PluginsConstants.PYTHON;
     private final String id;
     private int index;
     private boolean isEnabled;
@@ -87,6 +88,10 @@ public class Plugin {
     public String getErrorMessage() {
         return this.errorMessage;
     }
+
+    public String getEngine() { return engine; }
+    public void setEngine(String engine) { this.engine = engine; }
+    public Exception getError() { return hasError() ? new IllegalStateException(errorMessage) : null; }
 
     public void setErrorMessage(String str) {
         this.errorMessage = str;

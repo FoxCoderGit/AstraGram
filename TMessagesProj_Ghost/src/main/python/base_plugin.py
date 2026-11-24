@@ -31,6 +31,10 @@ class PluginMetadata:
     version: str
     icon: str
     min_version: str
+    app_version: str = None
+    sdk_version: str = None
+    category: str = None
+    requirements: object = None
 
 
 class PluginError(Exception):
@@ -190,7 +194,10 @@ class BasePlugin:
 
     def import_settings(self, settings, reload_settings=True):
         from plugin_runtime import import_settings
-        return import_settings(self._plugin_id, settings)
+        result = import_settings(self._plugin_id, settings)
+        if result and reload_settings:
+            self.reload_settings()
+        return result
 
     def reload_settings(self):
         import plugin_runtime

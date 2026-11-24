@@ -6,14 +6,14 @@
 
 [Latest release](https://github.com/FoxCoderGit/AstraGram/releases/latest) | [Report an issue](https://github.com/FoxCoderGit/AstraGram/issues) | [Security policy](SECURITY.md)
 
-## Current release
+## Current source version
 
-- Version: **13.2.2-astra.140**
+- Version: **13.2.2-astra.150**
 - Telegram base: **13.2.2** ([upstream source](https://github.com/DrKLO/Telegram/tree/21f7d109da6ab3506c9e9577f98c6a38771ab335)).
 - Android package: `org.ghostgram.messenger` - retained to support updates over earlier installed builds without deleting local application data.
-- Download: [GitHub Releases](https://github.com/FoxCoderGit/AstraGram/releases/latest)
+- Published APKs: [GitHub Releases](https://github.com/FoxCoderGit/AstraGram/releases/latest)
 
-This release fixes cancellation of voice downloads and improves AstraRelay network detection. Recent additions include the message calculator, daily supporter badge updates and profile links by user ID. See [CHANGELOG.md](CHANGELOG.md).
+Source version 150 updates the plugin installer and SDK compatibility. See [CHANGELOG.md](CHANGELOG.md) for earlier releases.
 
 ## AstraGram additions
 
@@ -38,7 +38,7 @@ For the complete user-facing feature catalogue, see [FEATURES.md](FEATURES.md).
 - **View-once media copies** - available cloud-chat media can be sent as a new upload without its original timer. Expired files cannot be recovered.
 
 - **Reaction notifications** - Android notifications when another user reacts to your message, including while the app is in the background.
-- **Plugin controls** - built-in optional features are enabled independently from the Plugins screen.
+- **Plugins** - manage optional built-in features and install Python plugins or compatible Elyx archives from files, including attachments in chats and channels. Some exteraGram SDK APIs and Elyx package features are still unavailable.
 - **AstraGram badges** - server-verified creator and supporter badges with an explanation sheet on tap.
 - **exteraGram supporter badges** - optional display of supporter badges sourced from the public exteraGram profile service.
 

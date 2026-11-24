@@ -20,7 +20,7 @@ class OnClickListener(dynamic_proxy(View.OnClickListener)):
         super().__init__()
         self.fn = fn
     def onClick(self, view):
-        try: self.fn()
+        try: self.fn(view)
         except Exception: log(traceback.format_exc())
 
 
@@ -30,8 +30,8 @@ class OnLongClickListener(dynamic_proxy(View.OnLongClickListener)):
         self.fn = fn
     def onLongClick(self, view):
         try:
-            self.fn()
-            return True
+            result = self.fn(view)
+            return True if result is None else bool(result)
         except Exception:
             log(traceback.format_exc())
             return False

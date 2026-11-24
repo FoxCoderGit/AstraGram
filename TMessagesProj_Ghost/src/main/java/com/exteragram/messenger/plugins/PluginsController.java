@@ -27,8 +27,22 @@ public final class PluginsController implements PluginsHooks {
     public PyObject pluginManagerClass, devServerClass;
     public Python python;
     public boolean isInitialized;
-    private PluginsController() { pluginsDir.mkdirs(); }
+    private PluginsController() {
+        pluginsDir.mkdirs();
+        engines.put(PluginsConstants.PYTHON, new PythonPluginsEngine(this, false));
+        engines.put(PluginsConstants.ELYX, new PythonPluginsEngine(this, true));
+    }
     public static PluginsController getInstance() { return Holder.INSTANCE; }
+    public static ConcurrentHashMap<String, PythonPluginsEngine> getEngines() {
+        return getInstance().engines;
+    }
+    private final ConcurrentHashMap<String, PythonPluginsEngine> engines = new ConcurrentHashMap<>();
+    public ConcurrentHashMap<String, Plugin> getPlugins() { return plugins; }
+    public ConcurrentHashMap<String, List<SettingItem>> getSettings() { return settings; }
+    public File getPluginsDir() { return pluginsDir; }
+    public SharedPreferences getPreferences() { return preferences; }
+    public boolean getInitialized() { return PluginHost.isInitialized(); }
+    public void executeOnAppEvent(String event) { executeScriptsOnAppEvent(event); }
     public void init() { PluginHost.initialize(ApplicationLoader.applicationContext); }
     public void shutdown() { PluginHost.shutdown(); plugins.clear(); settings.clear(); hooks.clear(); python=null; pluginManagerClass=devServerClass=null; isInitialized=false; }
     public void restart() { Utilities.pluginsQueue.postRunnable(() -> { shutdown(); init(); }); }
@@ -57,7 +71,11 @@ public final class PluginsController implements PluginsHooks {
         Utilities.pluginsQueue.postRunnable(() -> { try { manager().callAttr("delete_plugin",id); plugins.remove(id);settings.remove(id);setPluginPinned(id,false);refresh();complete(callback,null); }catch(Throwable error){complete(callback,error.getMessage());} });
     }
     private void complete(Utilities.Callback<String> callback,String error) { if(callback!=null)AndroidUtilities.runOnUIThread(() -> callback.run(error)); }
-    private PyObject manager() { return Python.getInstance().getModule("plugins_manager").get("PluginsManager"); }
+    PyObject manager() { return Python.getInstance().getModule("plugins_manager").get("PluginsManager"); }
+    public boolean isPluginActive(String id) {
+        Plugin plugin = plugins.get(id);
+        return !ExteraConfig.pluginsSafeMode && plugin != null && plugin.isEnabled();
+    }
     public PluginValidationResult validatePluginFromFile(String path) {
         try { PyObject result=manager().callAttr("validate_plugin_from_file",path); return new PluginValidationResult(fromPython(result),null); }
         catch(Throwable error){return new PluginValidationResult(null,error.getMessage());}
@@ -72,6 +90,7 @@ public final class PluginsController implements PluginsHooks {
             JSONArray array=new JSONArray(PluginHost.getPluginsJson());Set<String> ids=new HashSet<>();
             for(int i=0;i<array.length();i++) { JSONObject item=array.getJSONObject(i);String id=item.getString("id");ids.add(id);
                 Plugin plugin=new Plugin(id,item.optString("name",id),jsonString(item,"author"),jsonString(item,"icon"),jsonString(item,"description"),jsonString(item,"min_version"),jsonString(item,"version"));
+                plugin.setEngine(item.optBoolean("structured") ? PluginsConstants.ELYX : PluginsConstants.PYTHON);
                 plugin.setErrorMessage(item.optString("error"));plugin.setEnabled(item.optBoolean("enabled"));plugins.put(id,plugin);
             }
             plugins.keySet().retainAll(ids);org.ghostgram.messenger.plugins.PluginMenuBridge.notifyChanged();
@@ -98,14 +117,65 @@ public final class PluginsController implements PluginsHooks {
     private static String jsonString(JSONObject object,String key){return object.isNull(key)?null:object.optString(key,null);}
     private static boolean bool(PyObject obj,String key){PyObject value=obj.get(key);return value!=null&&value.toBoolean();}
     private String key(String id,String key){return "plugin_setting_"+id+"_"+key;}
-    public boolean getPluginSettingBoolean(String id,String key,boolean fallback){return preferences.getBoolean(key(id,key),fallback);}
-    public int getPluginSettingInt(String id,String key,int fallback){return preferences.getInt(key(id,key),fallback);}
-    public String getPluginSettingString(String id,String key,String fallback){return preferences.getString(key(id,key),fallback);}
-    public void setPluginSettingBoolean(String id,String key,boolean value){preferences.edit().putBoolean(key(id,key),value).apply();loadPluginSettings(id);}
-    public void setPluginSettingInt(String id,String key,int value){preferences.edit().putInt(key(id,key),value).apply();loadPluginSettings(id);}
-    public void setPluginSettingString(String id,String key,String value){preferences.edit().putString(key(id,key),value).apply();loadPluginSettings(id);}
-    public void clearPluginSettingsPreferences(String id){SharedPreferences.Editor edit=preferences.edit();for(String key:preferences.getAll().keySet())if(key.startsWith("plugin_setting_"+id+"_"))edit.remove(key);edit.apply();settings.remove(id);}
-    public boolean hasPluginSettingsPreferences(String id){for(String key:preferences.getAll().keySet())if(key.startsWith("plugin_setting_"+id+"_"))return true;return false;}
+    private String jsonPrefix(String id) { return "plugin_json_" + id.length() + ":" + id + ":"; }
+
+    private Object structuredSetting(String id, String name) {
+        String encoded = preferences.getString(jsonPrefix(id) + name, null);
+        if (encoded == null) return preferences.getAll().get(key(id, name));
+        try { return new JSONTokener(encoded).nextValue(); } catch (JSONException error) { return null; }
+    }
+
+    public boolean getPluginSettingBoolean(String id,String key,boolean fallback){Object value=structuredSetting(id,key);return value instanceof Boolean?(Boolean)value:fallback;}
+    public int getPluginSettingInt(String id,String key,int fallback){Object value=structuredSetting(id,key);return value instanceof Integer?(Integer)value:fallback;}
+    public String getPluginSettingString(String id,String key,String fallback){Object value=structuredSetting(id,key);return value instanceof String?(String)value:fallback;}
+    public void setPluginSettingBoolean(String id,String key,boolean value){preferences.edit().remove(jsonPrefix(id)+key).putBoolean(key(id,key),value).apply();loadPluginSettings(id);}
+    public void setPluginSettingInt(String id,String key,int value){preferences.edit().remove(jsonPrefix(id)+key).putInt(key(id,key),value).apply();loadPluginSettings(id);}
+    public void setPluginSettingString(String id,String key,String value){preferences.edit().remove(jsonPrefix(id)+key).putString(key(id,key),value).apply();loadPluginSettings(id);}
+
+    public synchronized String readPluginSettingsJson(String id) throws JSONException {
+        String oldPrefix = key(id, ""), newPrefix = jsonPrefix(id);
+        JSONObject result = new JSONObject();
+        Map<String, ?> stored = preferences.getAll();
+        for (Map.Entry<String, ?> entry : stored.entrySet()) {
+            if (entry.getKey().startsWith(oldPrefix)) {
+                result.put(entry.getKey().substring(oldPrefix.length()), JSONObject.wrap(entry.getValue()));
+            }
+        }
+        for (Map.Entry<String, ?> entry : stored.entrySet()) {
+            if (entry.getKey().startsWith(newPrefix) && entry.getValue() instanceof String) {
+                result.put(entry.getKey().substring(newPrefix.length()), new JSONTokener((String) entry.getValue()).nextValue());
+            }
+        }
+        return result.toString();
+    }
+
+    public synchronized void writePluginSettingJson(String id, String name, String value) {
+        preferences.edit().remove(key(id, name)).putString(jsonPrefix(id) + name, value).apply();
+        loadPluginSettings(id);
+    }
+
+    public synchronized void replacePluginSettingsJson(String id, String values) throws JSONException {
+        JSONObject incoming = new JSONObject(values);
+        SharedPreferences.Editor editor = preferences.edit();
+        removeStoredSettings(id, editor);
+        Iterator<String> names = incoming.keys();
+        while (names.hasNext()) {
+            String name = names.next();
+            Object value = incoming.get(name);
+            editor.putString(jsonPrefix(id) + name, value instanceof String ? JSONObject.quote((String) value) : value.toString());
+        }
+        editor.apply();
+        loadPluginSettings(id);
+    }
+
+    private void removeStoredSettings(String id, SharedPreferences.Editor editor) {
+        for (String name : preferences.getAll().keySet()) {
+            if (name.startsWith(key(id, "")) || name.startsWith(jsonPrefix(id))) editor.remove(name);
+        }
+    }
+
+    public synchronized void clearPluginSettingsPreferences(String id){SharedPreferences.Editor editor=preferences.edit();removeStoredSettings(id,editor);editor.apply();settings.remove(id);}
+    public boolean hasPluginSettingsPreferences(String id){for(String name:preferences.getAll().keySet())if(name.startsWith(key(id,""))||name.startsWith(jsonPrefix(id)))return true;return false;}
     public static boolean isPluginPinned(String id){return ExteraConfig.pinnedPlugins.contains(id);}
     public static void setPluginPinned(String id,boolean value){Set<String> pins=new HashSet<>(ExteraConfig.pinnedPlugins);if(value)pins.add(id);else pins.remove(id);ExteraConfig.pinnedPlugins=pins;ExteraConfig.preferences.edit().putStringSet("pinnedPlugins",pins).apply();}
     public void checkDevServer(){if(!PluginHost.isInitialized())return;devServerClass=Python.getInstance().getModule("dev_server").get("DevServer");devServerClass.callAttr(ExteraConfig.pluginsDevMode?"start_server":"stop_server");}

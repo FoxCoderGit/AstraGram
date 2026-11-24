@@ -43060,6 +43060,11 @@ public class ChatActivity extends BaseFragment implements
         }
 
         @Override
+        public boolean didPressPluginFile(ChatMessageCell cell) {
+            return org.telegram.messenger.PluginBridge.openMessagePlugin(ChatActivity.this, cell.getMessageObject());
+        }
+
+        @Override
         public void didPressImage(ChatMessageCell cell, float x, float y, boolean fullPreview) {
             MessageObject message = cell.getMessageObject();
             if(GhostCloudPreview.open(ChatActivity.this,message))return;
@@ -43086,6 +43091,7 @@ public class ChatActivity extends BaseFragment implements
             } else if (message.isSending()) {
                 return;
             }
+            if (message.type == MessageObject.TYPE_FILE && didPressPluginFile(cell)) return;
             if (fullPreview && message != null && message.messageOwner != null && message.messageOwner.media != null && message.messageOwner.media.webpage != null && !TextUtils.isEmpty(message.messageOwner.media.webpage.url)) {
                 final String url = message.messageOwner.media.webpage.url;
                 final String host = AndroidUtilities.getHostAuthority(url);
