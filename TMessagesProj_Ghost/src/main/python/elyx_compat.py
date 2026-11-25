@@ -21,6 +21,13 @@ REFMAP = ('refmap.yaml', 'refmap.yml', 'refmap.json')
 METADATA = ('metainfo.yaml', 'metainfo.yml', 'metainfo.json')
 FIELDS = ('id', 'name', 'description', 'author', 'version', 'icon', 'min_version',
           'app_version', 'sdk_version', 'category', 'requirements')
+# These absolute imports belong to the host SDK even if the archive has a
+# package with the same name. Relative imports still resolve inside Elyx.
+_SDK_IMPORT_ROOTS = frozenset((
+    'android', 'androidx', 'android_utils', 'base_plugin', 'client_utils',
+    'com', 'de', 'elyx', 'extera_utils', 'file_utils', 'hook_utils', 'importlib',
+    'java', 'log_utils', 'markdown_utils', 'org', 'plugin_settings', 'ui',
+))
 _scopes = {}
 _namespaces = {}
 
@@ -180,6 +187,16 @@ def _clear_namespace(namespace):
     _scopes.pop(namespace, None)
 
 
+def _local_import_root(name, roots):
+    first = name.partition('.')[0]
+    if first and first not in _SDK_IMPORT_ROOTS and any(
+        (root / first).is_dir() or (root / (first + '.py')).is_file()
+        or (root / (first + '.pyc')).is_file() for root in roots
+    ):
+        return first
+    return None
+
+
 class _Loader(importlib.abc.Loader):
     def __init__(self, loader, namespace):
         self.loader = loader
@@ -195,11 +212,11 @@ class _Loader(importlib.abc.Loader):
         def importing(name, globals=None, locals=None, fromlist=(), level=0):
             if level == 0 and name == 'elyx':
                 return api
-            first = name.split('.')[0]
-            if level == 0 and first and any((root / first).is_dir() or (root / (first + '.py')).is_file()
-                                          or (root / (first + '.pyc')).is_file() for root in roots):
-                loaded = importlib.import_module(namespace + '.' + name)
-                return loaded if fromlist else sys.modules[namespace + '.' + first]
+            if level == 0:
+                first = _local_import_root(name, roots)
+                if first is not None:
+                    loaded = builtins.__import__(namespace + '.' + name, globals, locals, fromlist, 0)
+                    return loaded if fromlist else sys.modules[namespace + '.' + first]
             return builtins.__import__(name, globals, locals, fromlist, level)
 
         module.__dict__['__builtins__'] = dict(vars(builtins), __import__=importing)
@@ -293,8 +310,7 @@ def _environment(plugin_id, metadata, refmap, code, namespace):
     def import_module(name, package=None):
         if name.startswith('.'):
             return importlib.import_module(name, package or namespace)
-        first = name.split('.')[0]
-        if any((root / first).is_dir() or (root / (first + '.py')).is_file() or (root / (first + '.pyc')).is_file() for root in _scopes[namespace][0]):
+        if _local_import_root(name, _scopes[namespace][0]) is not None:
             return importlib.import_module(namespace + '.' + name)
         return importlib.import_module(name, package)
     api.import_module = import_module

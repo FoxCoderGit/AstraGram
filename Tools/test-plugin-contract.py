@@ -214,16 +214,19 @@ with tempfile.TemporaryDirectory() as directory:
     root = Path(directory)
     archive = root / 'library.elyx'
     manager.init(root / 'plugins')
+    host_bulletin = module('ui.bulletin', BulletinHelper=object())
     entry = '''import sys
 for name in list(sys.modules):
     if name == 'astratestlib' or name.startswith('astratestlib.'):
         del sys.modules[name]
 from astratestlib.src.api import VALUE
+from astratestlib.src.ui.bulletin import SDK_HELPERS
 from base_plugin import BasePlugin
 class Library(BasePlugin):
     def on_plugin_load(self):
         assert self.id == 'astratestlib'
         self.value = VALUE
+        self.sdk_helpers = SDK_HELPERS
 '''
     def write_library(main):
         with zipfile.ZipFile(archive, 'w') as output:
@@ -232,6 +235,11 @@ class Library(BasePlugin):
             output.writestr('__init__.py', 'from .src.api import VALUE')
             output.writestr('src/api.py', 'VALUE = 42')
             output.writestr('src/main.py', main)
+            output.writestr('src/ui/__init__.py', '')
+            output.writestr('src/ui/bulletin.py', '''from ui.bulletin import BulletinHelper
+from elyx import import_module
+SDK_HELPERS = (BulletinHelper, import_module('ui.bulletin').BulletinHelper)
+''')
 
     write_library(entry)
     check(runtime.install_file(archive), True)
@@ -239,6 +247,7 @@ class Library(BasePlugin):
     check(manager._plugins['astratestlib'].initialized, False)
     manager.set_plugin_enabled('astratestlib', True)
     check(manager._plugins['astratestlib'].value, 42)
+    check(manager._plugins['astratestlib'].sdk_helpers, (host_bulletin.BulletinHelper,) * 2)
     write_library(entry + '\nimport missing_astra_test_library')
     check(runtime.install_file(archive), False)
     check(runtime.last_install_error().splitlines()[0],
