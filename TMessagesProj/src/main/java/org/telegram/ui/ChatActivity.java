@@ -472,6 +472,7 @@ public class ChatActivity extends BaseFragment implements
     private ActionBarMenuItem.Item savedChatsItem, savedChatsGap;;
     private ActionBarMenuItem headerItem;
     private ActionBarMenuItem.Item safeScreenshotItem;
+    private org.telegram.ui.Components.AstraChatExport.Options astraChatExport;
     private boolean loadingChatBeginning;
     private int chatBeginningRequestId;
     private int chatBeginningGeneration;
@@ -3875,6 +3876,12 @@ public class ChatActivity extends BaseFragment implements
                     jumpToChatBeginning();
                     return;
                 }
+                if (id == 98764) {
+                    if (canExportAstraChat() && isAstraChatExportEnabled()) {
+                        org.telegram.ui.Components.AstraChatExport.choose(ChatActivity.this, options -> astraChatExport = options);
+                    }
+                    return;
+                }
                 if (id == 98761) {
                     boolean safe=org.telegram.ui.Components.GhostSafeScreenshot.toggle(currentAccount,dialog_id,currentUser);
                     clearSelectionMode();
@@ -4608,6 +4615,10 @@ public class ChatActivity extends BaseFragment implements
                 headerItem.lazilyAddSubItem(24050, R.drawable.msg_customize, LocaleController.getString(R.string.GhostSimulation));
             }
             if(chatMode==MODE_DEFAULT)headerItem.lazilyAddSubItem(24054,R.drawable.msg_gallery,"Скриншот переписки");
+            if (canExportAstraChat()) {
+                headerItem.lazilyAddSubItem(98764, R.drawable.msg_filehq, "Экспорт чата");
+                headerItem.setSubItemShown(98764, isAstraChatExportEnabled());
+            }
             if(chatMode==MODE_DEFAULT)headerItem.lazilyAddSubItem(98762,R.drawable.msg_go_up,getString(R.string.GhostChatBeginning));
             safeScreenshotItem=null;
             if(chatMode==MODE_DEFAULT&&currentUser!=null&&!currentUser.bot){
@@ -11023,6 +11034,16 @@ public class ChatActivity extends BaseFragment implements
         actionMode.setItemVisibility(share, View.GONE);
     }
 
+    private boolean isAstraChatExportEnabled() {
+        return org.telegram.messenger.GhostOptionalFeatures.enabled(org.telegram.messenger.GhostOptionalFeatures.CHAT_EXPORT);
+    }
+
+    private boolean canExportAstraChat() {
+        return chatMode == MODE_DEFAULT && currentEncryptedChat == null
+                && !org.telegram.messenger.GhostSimulationPolicy.virtual(dialog_id)
+                && !getMessagesController().isPeerNoForwards(dialog_id);
+    }
+
     private void hideTagSelector() {
         if (tagSelector == null) return;
         final ReactionsContainerLayout thisTagSelector = tagSelector;
@@ -14989,6 +15010,58 @@ public class ChatActivity extends BaseFragment implements
             scheduledMessagesCount += photos.size();
             updateScheduledInterface(true);
         }
+    }
+
+    public boolean openAstraRecentPhotos() {
+        if (getParentActivity() == null || editingMessageObject != null ||
+                currentChat != null && !ChatObject.canSendPhoto(currentChat)) return false;
+        final Activity activity = getParentActivity();
+        final String permission = Build.VERSION.SDK_INT >= 33 ? Manifest.permission.READ_MEDIA_IMAGES : Manifest.permission.READ_EXTERNAL_STORAGE;
+        if (activity.checkSelfPermission(permission) != android.content.pm.PackageManager.PERMISSION_GRANTED &&
+                (Build.VERSION.SDK_INT < 34 || activity.checkSelfPermission(Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED)
+                        != android.content.pm.PackageManager.PERMISSION_GRANTED)) {
+            activity.requestPermissions(new String[]{permission}, 9487);
+            return true;
+        }
+        AndroidUtilities.hideKeyboard(getFragmentView());
+        final long peer = dialog_id;
+        Utilities.globalQueue.postRunnable(() -> {
+            final ArrayList<Object> photos = new ArrayList<>();
+            final android.net.Uri collection = android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI;
+            final String[] fields = {"_id", "_data", "datetaken", "orientation", "width", "height", "_size"};
+            try (android.database.Cursor cursor = activity.getContentResolver().query(collection, fields, null, null, "date_added DESC, _id DESC")) {
+                while (cursor != null && photos.size() < 8 && cursor.moveToNext()) {
+                    String path = cursor.getString(1);
+                    if (path != null && new File(path).canRead()) {
+                        photos.add(new MediaController.PhotoEntry(0, cursor.getInt(0), cursor.getLong(2), path,
+                                cursor.getInt(3), 0, false, cursor.getInt(4), cursor.getInt(5), cursor.getLong(6)));
+                    }
+                }
+            } catch (Exception error) {
+                FileLog.e(error);
+            }
+            AndroidUtilities.runOnUIThread(() -> {
+                if (getParentActivity() != activity || getDialogId() != peer || !isLastFragment()) return;
+                if (photos.isEmpty()) {
+                    openAttachMenu();
+                    return;
+                }
+                PhotoViewer viewer = PhotoViewer.getInstance();
+                viewer.setParentActivity(this, getResourceProvider());
+                viewer.openPhotoForSelect(photos, 0, 2, false, new PhotoViewer.EmptyPhotoViewerProvider() {
+                    @Override public void sendButtonPressed(int index, VideoEditedInfo edit, boolean notify, int date, int repeat, boolean asFile) {
+                        if (index < 0 || index >= photos.size() || !checkSlowModeAlert()
+                                || currentChat != null && !ChatObject.canSendPhoto(currentChat)) return;
+                        if (replyingQuote != null && replyingQuote.outdated) {
+                            showQuoteMessageUpdate();
+                            return;
+                        }
+                        sendMedia((MediaController.PhotoEntry) photos.get(index), edit, notify, date, repeat, asFile, 0);
+                    }
+                }, this);
+            });
+        });
+        return true;
     }
 
     public void didSelectSearchPhotos(ArrayList<SendMessagesHelper.SendingMediaInfo> photos, boolean notify, int scheduleDate) {
@@ -19991,6 +20064,14 @@ public class ChatActivity extends BaseFragment implements
 
     @Override
     public void onRequestPermissionsResultFragment(int requestCode, String[] permissions, int[] grantResults) {
+        if (requestCode == 9487) {
+            if (grantResults.length > 0 && (grantResults[0] == android.content.pm.PackageManager.PERMISSION_GRANTED ||
+                    Build.VERSION.SDK_INT >= 34 && getParentActivity() != null && getParentActivity().checkSelfPermission(
+                            Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED) == android.content.pm.PackageManager.PERMISSION_GRANTED)) {
+                openAstraRecentPhotos();
+            }
+            return;
+        }
         if (chatActivityEnterView != null) {
             chatActivityEnterView.onRequestPermissionsResultFragment(requestCode, permissions, grantResults);
         }
@@ -21546,6 +21627,18 @@ public class ChatActivity extends BaseFragment implements
 
     @Override
     public void onActivityResultFragment(int requestCode, int resultCode, Intent data) {
+        if (requestCode == org.telegram.ui.Components.AstraChatExport.PICK_FOLDER) {
+            org.telegram.ui.Components.AstraChatExport.Options options = astraChatExport;
+            astraChatExport = null;
+            if (options != null) {
+                if (isAstraChatExportEnabled() && resultCode == Activity.RESULT_OK && data != null && data.getData() != null) {
+                    options.start(data.getData());
+                } else {
+                    options.discard();
+                }
+            }
+            return;
+        }
         if (resultCode == Activity.RESULT_OK) {
             if (requestCode == 0 || requestCode == 2) {
                 createChatAttachView();
@@ -31110,6 +31203,7 @@ public class ChatActivity extends BaseFragment implements
     @Override
     public void onResume() {
         super.onResume();
+        if (headerItem != null && canExportAstraChat()) headerItem.setSubItemShown(98764, isAstraChatExportEnabled());
         if(ghostVideoSuggestion!=null&&chatActivityEnterView!=null)ghostVideoSuggestion.textChanged(chatActivityEnterView.getFieldText());
 
         checkShowBlur(false);

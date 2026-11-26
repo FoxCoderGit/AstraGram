@@ -32,6 +32,14 @@ public final class RoundVideoSettings {
         preferences().edit().putBoolean("round_video_wide_angle_zoom", value).apply();
     }
 
+    static float getPreferredLens() {
+        return preferences().getFloat("astra_round_lens", 1f) == 0.5f ? 0.5f : 1f;
+    }
+
+    static void setPreferredLens(float ratio) {
+        preferences().edit().putFloat("astra_round_lens", ratio).apply();
+    }
+
     public static boolean isZoomLocked() {
         return preferences().getBoolean("round_video_lock_zoom", false);
     }

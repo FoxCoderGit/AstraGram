@@ -1966,24 +1966,33 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
         } else if (id == NotificationCenter.musicDidLoad) {
             long did = (Long) args[0];
             long topicId = (Long) args[3];
-            if (playingMessageObject != null && playingMessageObject.isMusic() && playingMessageObject.getDialogId() == did && playlistTopicId == topicId && !playingMessageObject.scheduled) {
+            if (playingMessageObject != null && playingMessageObject.currentAccount == account && playingMessageObject.isMusic() && playingMessageObject.getDialogId() == did && playlistTopicId == topicId && !playingMessageObject.scheduled) {
                 ArrayList<MessageObject> arrayListBegin = (ArrayList<MessageObject>) args[1];
                 ArrayList<MessageObject> arrayListEnd = (ArrayList<MessageObject>) args[2];
-                playlist.addAll(0, arrayListBegin);
-                playlist.addAll(arrayListEnd);
+                for (MessageObject message : arrayListBegin) {
+                    if (!playlistMap.containsKey(message.getId())) {
+                        playlist.add(message);
+                        playlistMap.put(message.getId(), message);
+                    }
+                }
+                for (MessageObject message : arrayListEnd) {
+                    if (!playlistMap.containsKey(message.getId())) {
+                        playlist.add(message);
+                        playlistMap.put(message.getId(), message);
+                    }
+                }
                 for (int a = 0, N = playlist.size(); a < N; a++) {
                     MessageObject object = playlist.get(a);
                     playlistMap.put(object.getId(), object);
                     playlistMaxId[0] = Math.min(playlistMaxId[0], object.getId());
                 }
                 sortPlaylist();
+                int newIndex = playlist.indexOf(playingMessageObject);
+                if (newIndex >= 0) {
+                    currentPlaylistNum = newIndex;
+                }
                 if (SharedConfig.shuffleMusic) {
                     buildShuffledPlayList();
-                } else if (playingMessageObject != null) {
-                    int newIndex = playlist.indexOf(playingMessageObject);
-                    if (newIndex >= 0) {
-                        currentPlaylistNum = newIndex;
-                    }
                 }
                 playlistClassGuid = ConnectionsManager.generateClassGuid();
             }
@@ -2028,6 +2037,31 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
             boolean scheduled = (Boolean) args[2];
             if (scheduled) {
                 return;
+            }
+            if (playingMessageObject != null && playingMessageObject.currentAccount == account
+                    && playingMessageObject.isMusic() && !playingMessageObject.scheduled
+                    && currentSavedMusicList == null && playlistGlobalSearchParams == null
+                    && playingMessageObject.getDialogId() == (Long) args[0]) {
+                ArrayList<MessageObject> messages = (ArrayList<MessageObject>) args[1];
+                int added = 0;
+                for (MessageObject message : messages) {
+                    if (!message.isMusic() || message.isVoiceOnce()
+                            || playlistMap.containsKey(message.getId())
+                            || (playlistTopicId != 0 && MessageObject.getTopicId(account, message.messageOwner, false) != playlistTopicId)) {
+                        continue;
+                    }
+                    playlist.add(message);
+                    playlistMap.put(message.getId(), message);
+                    added++;
+                }
+                if (added > 0) {
+                    sortPlaylist();
+                    currentPlaylistNum = playlist.indexOf(playingMessageObject);
+                    if (SharedConfig.shuffleMusic) {
+                        buildShuffledPlayList();
+                    }
+                    NotificationCenter.getInstance(account).postNotificationName(NotificationCenter.moreMusicDidLoad, added);
+                }
             }
             if (voiceMessagesPlaylist != null && !voiceMessagesPlaylist.isEmpty()) {
                 MessageObject messageObject = voiceMessagesPlaylist.get(0);
@@ -3811,7 +3845,8 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
         final File cacheFile = file != null ? file : FileLoader.getInstance(messageObject.currentAccount).getPathToMessage(messageObject.messageOwner);
         boolean canStream = SharedConfig.streamMedia && (messageObject.isMusic() || messageObject.isRoundVideo() || messageObject.isVideo() && messageObject.canStreamVideo()) && !messageObject.shouldEncryptPhotoOrVideo() && !DialogObject.isEncryptedDialog(messageObject.getDialogId());
         if (cacheFile != file && !(exists = cacheFile.exists()) && !canStream) {
-            FileLoader.getInstance(messageObject.currentAccount).loadFile(messageObject.getDocument(), messageObject, FileLoader.PRIORITY_LOW, messageObject.shouldEncryptPhotoOrVideo() ? 2 : 0);
+            int priority = messageObject.isMusic() ? FileLoader.PRIORITY_HIGH : FileLoader.PRIORITY_LOW;
+            FileLoader.getInstance(messageObject.currentAccount).loadFile(messageObject.getDocument(), messageObject, priority, messageObject.shouldEncryptPhotoOrVideo() ? 2 : 0);
             downloadingCurrentMessage = true;
             isPaused = false;
             lastProgress = 0;

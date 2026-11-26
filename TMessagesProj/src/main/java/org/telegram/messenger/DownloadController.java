@@ -80,6 +80,10 @@ public class DownloadController extends BaseController implements NotificationCe
 
     private LongSparseArray<Long> typingTimes = new LongSparseArray<>();
 
+    public static final int DOWNLOAD_IDLE = 0, DOWNLOAD_PAUSED = 1, DOWNLOAD_FAILED = 2, DOWNLOAD_WAITING = 3;
+    private long downloadRevision;
+    private final HashMap<String, Long> downloadDates = new HashMap<>();
+    private final HashMap<String, Long> downloadBytes = new HashMap<>();
     public final ArrayList<MessageObject> downloadingFiles = new ArrayList<>();
     public final ArrayList<MessageObject> recentDownloadingFiles = new ArrayList<>();
     public final SparseArray<MessageObject> unviewedDownloads = new SparseArray<>();
@@ -324,6 +328,7 @@ public class DownloadController extends BaseController implements NotificationCe
             getNotificationCenter().addObserver(DownloadController.this, NotificationCenter.fileLoadFailed);
             getNotificationCenter().addObserver(DownloadController.this, NotificationCenter.fileLoaded);
             getNotificationCenter().addObserver(DownloadController.this, NotificationCenter.fileLoadProgressChanged);
+            getNotificationCenter().addObserver(DownloadController.this, NotificationCenter.didUpdateConnectionState);
             getNotificationCenter().addObserver(DownloadController.this, NotificationCenter.fileUploadProgressChanged);
             getNotificationCenter().addObserver(DownloadController.this, NotificationCenter.httpFileDidLoad);
             getNotificationCenter().addObserver(DownloadController.this, NotificationCenter.httpFileDidFailedLoad);
@@ -1304,7 +1309,9 @@ public class DownloadController extends BaseController implements NotificationCe
 
     @Override
     public void didReceivedNotification(int id, int account, Object... args) {
-        if (id == NotificationCenter.fileLoadFailed || id == NotificationCenter.httpFileDidFailedLoad) {
+        if (id == NotificationCenter.didUpdateConnectionState) {
+            restoreNetworkDownloads();
+        } else if (id == NotificationCenter.fileLoadFailed || id == NotificationCenter.httpFileDidFailedLoad) {
             String fileName = (String) args[0];
             Integer canceled = (Integer) args[1];
             listenerInProgress = true;
@@ -1325,6 +1332,13 @@ public class DownloadController extends BaseController implements NotificationCe
             }
             listenerInProgress = false;
             processLaterArrays();
+            if (id == NotificationCenter.fileLoadFailed) {
+                MessageObject queued = findDownload(fileName);
+                if (queued != null && canceled != 1 && downloadState(fileName) != DOWNLOAD_PAUSED
+                        && !getFileLoader().isLoadingFile(fileName)) {
+                    saveDownloadState(fileName, networkWaiting() ? DOWNLOAD_WAITING : DOWNLOAD_FAILED);
+                }
+            }
             checkDownloadFinished(fileName, canceled);
         } else if (id == NotificationCenter.fileLoaded || id == NotificationCenter.httpFileDidLoad) {
             listenerInProgress = true;
@@ -1350,10 +1364,13 @@ public class DownloadController extends BaseController implements NotificationCe
             }
             listenerInProgress = false;
             processLaterArrays();
+            MessageObject queued = id == NotificationCenter.fileLoaded ? findDownload(fileName) : null;
+            if (queued != null) onDownloadComplete(queued);
             checkDownloadFinished(fileName, 0);
         } else if (id == NotificationCenter.fileLoadProgressChanged) {
             listenerInProgress = true;
             String fileName = (String) args[0];
+            if (findDownload(fileName) != null) downloadBytes.put(fileName, (Long) args[1]);
             ArrayList<WeakReference<FileDownloadProgressListener>> arrayList = loadingFileObservers.get(fileName);
             if (arrayList != null) {
                 Long loadedSize = (Long) args[1];
@@ -1439,64 +1456,108 @@ public class DownloadController extends BaseController implements NotificationCe
     }
 
 
-    public void startDownloadFile(TLRPC.Document document, MessageObject parentObject) {
-        if (parentObject == null) {
-            return;
+    private MessageObject findDownload(String key) {
+        for (MessageObject message : downloadingFiles) {
+            AstraDownloadFile file = AstraDownloadFile.from(message);
+            if (file != null && file.key.equals(key)) return message;
         }
-        TLRPC.Document parentDocument = parentObject.getDocument();
-        if (parentDocument == null) {
-            return;
+        return null;
+    }
+
+    public static boolean isManuallyPaused(int account, String key) {
+        android.content.SharedPreferences prefs = MessagesController.getMainSettings(account);
+        return prefs.getBoolean("ghost_download_paused_" + key, false)
+                || prefs.getInt("astra_download_state_" + key, DOWNLOAD_IDLE) == DOWNLOAD_PAUSED;
+    }
+
+    public int downloadState(String key) {
+        android.content.SharedPreferences prefs = MessagesController.getMainSettings(currentAccount);
+        if (prefs.getBoolean("ghost_download_paused_" + key, false)) return DOWNLOAD_PAUSED;
+        return prefs.getInt("astra_download_state_" + key, DOWNLOAD_IDLE);
+    }
+
+    private void saveDownloadState(String key, int state) {
+        android.content.SharedPreferences.Editor edit = MessagesController.getMainSettings(currentAccount).edit();
+        edit.remove("ghost_download_paused_" + key);
+        if (state == DOWNLOAD_IDLE) edit.remove("astra_download_state_" + key);
+        else edit.putInt("astra_download_state_" + key, state);
+        edit.apply();
+        getNotificationCenter().postNotificationName(NotificationCenter.onDownloadingFilesChanged);
+    }
+
+    private boolean networkWaiting() {
+        return !ApplicationLoader.isNetworkOnline()
+                || getConnectionsManager().getConnectionState() == org.telegram.tgnet.ConnectionsManager.ConnectionStateWaitingForNetwork;
+    }
+
+    private void restoreNetworkDownloads() {
+        if (networkWaiting()) return;
+        for (MessageObject message : new ArrayList<>(downloadingFiles)) {
+            AstraDownloadFile file = AstraDownloadFile.from(message);
+            if (file != null && downloadState(file.key) == DOWNLOAD_WAITING) {
+                if (getFileLoader().isLoadingFile(file.key)) saveDownloadState(file.key, DOWNLOAD_IDLE);
+                else resumeDownload(file, false);
+            }
         }
+    }
+
+    public long downloadDate(AstraDownloadFile file) {
+        Long date = downloadDates.get(file.key);
+        return date != null ? date / 1000 : file.message.messageOwner.date;
+    }
+
+    public long downloadProgress(AstraDownloadFile file) {
+        long[] sizes = ImageLoader.getInstance().getFileProgressSizes(file.key);
+        Long saved = downloadBytes.get(file.key);
+        return sizes != null ? sizes[0] : saved != null ? saved :
+                MessagesController.getMainSettings(currentAccount).getLong("ghost_download_progress_" + file.key, 0);
+    }
+
+    public void pauseDownload(AstraDownloadFile file) {
+        MessagesController.getMainSettings(currentAccount).edit()
+                .putLong("ghost_download_progress_" + file.key, downloadProgress(file)).apply();
+        saveDownloadState(file.key, DOWNLOAD_PAUSED);
+        file.message.loadingCancelled = true;
+        file.cancel(getFileLoader());
+    }
+
+    public void resumeDownload(AstraDownloadFile file, boolean next) {
+        if (next) {
+            MessageObject queued = findDownload(file.key);
+            if (queued != null) {
+                downloadingFiles.remove(queued);
+                downloadingFiles.add(0, queued);
+            }
+        }
+        saveDownloadState(file.key, networkWaiting() ? DOWNLOAD_WAITING : DOWNLOAD_IDLE);
+        file.load(getFileLoader(), next ? FileLoader.PRIORITY_NEXT : FileLoader.PRIORITY_NORMAL_UP);
+    }
+
+    public void startDownloadFile(AstraDownloadFile file) {
         AndroidUtilities.runOnUIThread(() -> {
-            if (parentDocument == null) {
-                return;
-            }
-            boolean contains = false;
-
-            for (int i = 0; i < recentDownloadingFiles.size(); i++) {
-                MessageObject messageObject = recentDownloadingFiles.get(i);
-                if (messageObject == null) {
-                    continue;
-                }
-                TLRPC.Document document1 = messageObject.getDocument();
-                if (document1 != null && document1.id == parentDocument.id) {
-                    contains = true;
-                    break;
-                }
-            }
-
-            if (!contains) {
-                for (int i = 0; i < downloadingFiles.size(); i++) {
-                    MessageObject messageObject = downloadingFiles.get(i);
-                    if (messageObject == null) {
-                        continue;
-                    }
-                    TLRPC.Document document1 = messageObject.getDocument();
-                    if (document1 != null && document1.id == parentDocument.id) {
-                        contains = true;
-                        break;
-                    }
-                }
-            }
-            if (!contains) {
-                downloadingFiles.add(0, parentObject);
+            if (findDownload(file.key) == null && !containsDownload(recentDownloadingFiles, file)) {
+                downloadRevision++;
+                downloadingFiles.add(0, file.message);
+                long date = System.currentTimeMillis();
+                downloadDates.put(file.key, date);
                 getMessagesStorage().getStorageQueue().postRunnable(() -> {
+                    NativeByteBuffer data = null;
+                    SQLitePreparedStatement statement = null;
                     try {
-                        NativeByteBuffer data = new NativeByteBuffer(parentObject.messageOwner.getObjectSize());
-                        parentObject.messageOwner.serializeToStream(data);
-
-                        SQLitePreparedStatement state = getMessagesStorage().getDatabase().executeFast("REPLACE INTO downloading_documents VALUES(?, ?, ?, ?, ?)");
-                        state.bindByteBuffer(1, data);
-                        state.bindInteger(2, parentObject.getDocument().dc_id);
-                        state.bindLong(3, parentObject.getDocument().id);
-                        state.bindInteger(4, 0);
-                        state.bindLong(5, System.currentTimeMillis());
-
-                        state.step();
-                        state.dispose();
-                        data.reuse();
-                    } catch (Exception e) {
-                        FileLog.e(e);
+                        data = new NativeByteBuffer(file.message.messageOwner.getObjectSize());
+                        file.message.messageOwner.serializeToStream(data);
+                        statement = getMessagesStorage().getDatabase().executeFast("REPLACE INTO downloading_documents VALUES(?, ?, ?, ?, ?)");
+                        statement.bindByteBuffer(1, data);
+                        statement.bindInteger(2, file.dc);
+                        statement.bindLong(3, file.id);
+                        statement.bindInteger(4, 0);
+                        statement.bindLong(5, date);
+                        statement.step();
+                    } catch (Exception error) {
+                        FileLog.e(error);
+                    } finally {
+                        if (statement != null) statement.dispose();
+                        if (data != null) data.reuse();
                     }
                 });
             }
@@ -1504,87 +1565,45 @@ public class DownloadController extends BaseController implements NotificationCe
         });
     }
 
-    public void onDownloadComplete(MessageObject parentObject) {
-        if (parentObject == null || parentObject.getDocument() == null) {
-            return;
+    private boolean containsDownload(ArrayList<MessageObject> messages, AstraDownloadFile file) {
+        for (MessageObject message : messages) {
+            AstraDownloadFile other = AstraDownloadFile.from(message);
+            if (other != null && other.key.equals(file.key)) return true;
         }
-        TLRPC.Document document = parentObject.getDocument();
-        AndroidUtilities.runOnUIThread(() -> {
-            boolean removed = false;
-            for (int i = 0; i < downloadingFiles.size(); i++) {
-                if (downloadingFiles.get(i).getDocument() != null && downloadingFiles.get(i).getDocument().id == document.id) {
-                    downloadingFiles.remove(i);
-                    removed = true;
-                    break;
-                }
-            }
-
-            if (removed) {
-                boolean contains = false;
-                for (int i = 0; i < recentDownloadingFiles.size(); i++) {
-                    if (recentDownloadingFiles.get(i).getDocument() != null && recentDownloadingFiles.get(i).getDocument().id == document.id) {
-                        contains = true;
-                        break;
-                    }
-                }
-                if (!contains) {
-                    recentDownloadingFiles.add(0, parentObject);
-                    putToUnviewedDownloads(parentObject);
-                }
-                getNotificationCenter().postNotificationName(NotificationCenter.onDownloadingFilesChanged);
-                getMessagesStorage().getStorageQueue().postRunnable(() -> {
-                    try {
-                        String req = String.format(Locale.ENGLISH, "UPDATE downloading_documents SET state = 1, date = %d WHERE hash = %d AND id = %d", System.currentTimeMillis(), parentObject.getDocument().dc_id,  parentObject.getDocument().id);
-                        getMessagesStorage().getDatabase().executeFast(req).stepThis().dispose();
-                        getMessagesStorage().getDatabase().executeFast("DELETE FROM downloading_documents WHERE state = 1 AND rowid NOT IN (SELECT rowid FROM downloading_documents WHERE state = 1 ORDER BY date DESC LIMIT 100)").stepThis().dispose();
-                    } catch (Exception e) {
-                        FileLog.e(e);
-                    }
-                });
-            }
-        });
-
-
+        return false;
     }
 
-    public void onDownloadFail(MessageObject parentObject, int reason) {
-        if (parentObject == null) {
-            return;
-        }
-        // A user pause keeps the database entry and the partial file for later resumption.
-        if (reason == 1 && MessagesController.getMainSettings(currentAccount).getBoolean("ghost_download_paused_" + parentObject.getFileName(), false)) return;
-
+    public void onDownloadComplete(MessageObject message) {
+        AstraDownloadFile file = AstraDownloadFile.from(message);
+        if (file == null) return;
         AndroidUtilities.runOnUIThread(() -> {
-            boolean removed = false;
-            TLRPC.Document parentDocument = parentObject.getDocument();
-            for (int i = 0; i < downloadingFiles.size(); i++) {
-                TLRPC.Document downloadingDocument = downloadingFiles.get(i).getDocument();
-                if (downloadingDocument == null || parentDocument != null && downloadingDocument.id == parentDocument.id) {
-                    downloadingFiles.remove(i);
-                    removed = true;
-                    break;
+            MessageObject queued = findDownload(file.key);
+            if (queued == null) return;
+            downloadRevision++;
+            downloadingFiles.remove(queued);
+            long date = System.currentTimeMillis();
+            downloadDates.put(file.key, date);
+            downloadBytes.remove(file.key);
+            MessagesController.getMainSettings(currentAccount).edit().remove("ghost_download_progress_" + file.key).apply();
+            queued.mediaExists = true;
+            if (!containsDownload(recentDownloadingFiles, file)) {
+                recentDownloadingFiles.add(0, queued);
+                putToUnviewedDownloads(queued);
+                if (recentDownloadingFiles.size() > 100) {
+                    AstraDownloadFile expired = AstraDownloadFile.from(recentDownloadingFiles.remove(100));
+                    if (expired != null) downloadDates.remove(expired.key);
                 }
             }
-            if (removed) {
-                getNotificationCenter().postNotificationName(NotificationCenter.onDownloadingFilesChanged);
-                if (reason == 0) {
-                    NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.showBulletin, Bulletin.TYPE_ERROR, LocaleController.formatString("MessageNotFound", R.string.MessageNotFound));
-                } else if (reason == -1) {
-                    LaunchActivity.checkFreeDiscSpaceStatic(2);
+            saveDownloadState(file.key, DOWNLOAD_IDLE);
+            getMessagesStorage().getStorageQueue().postRunnable(() -> {
+                try {
+                    String sql = String.format(Locale.US, "UPDATE downloading_documents SET state = 1, date = %d WHERE hash = %d AND id = %d", date, file.dc, file.id);
+                    getMessagesStorage().getDatabase().executeFast(sql).stepThis().dispose();
+                    getMessagesStorage().getDatabase().executeFast("DELETE FROM downloading_documents WHERE state = 1 AND rowid NOT IN (SELECT rowid FROM downloading_documents WHERE state = 1 ORDER BY date DESC LIMIT 100)").stepThis().dispose();
+                } catch (Exception error) {
+                    FileLog.e(error);
                 }
-            }
-        });
-
-        getMessagesStorage().getStorageQueue().postRunnable(() -> {
-            try {
-                SQLitePreparedStatement state = getMessagesStorage().getDatabase().executeFast("DELETE FROM downloading_documents WHERE hash = ? AND id = ?");
-                state.bindInteger(1, parentObject.getDocument().dc_id);
-                state.bindLong(2, parentObject.getDocument().id);
-                state.step();
-                state.dispose();
-            } catch (Exception e) {
-                FileLog.e(e);
-            }
+            });
         });
     }
 
@@ -1620,13 +1639,14 @@ public class DownloadController extends BaseController implements NotificationCe
     }
 
     public void loadDownloadingFiles() {
+        final long revision = downloadRevision;
         getMessagesStorage().getStorageQueue().postRunnable(() -> {
+            HashMap<String, Long> loadedDates = new HashMap<>();
             ArrayList<MessageObject> downloadingMessages = new ArrayList<>();
             ArrayList<MessageObject> recentlyDownloadedMessages = new ArrayList<>();
-            ArrayList<MessageObject> newMessages = new ArrayList<>();
             try {
                 getMessagesStorage().getDatabase().executeFast("DELETE FROM downloading_documents WHERE state = 1 AND rowid NOT IN (SELECT rowid FROM downloading_documents WHERE state = 1 ORDER BY date DESC LIMIT 100)").stepThis().dispose();
-                SQLiteCursor cursor2 = getMessagesStorage().getDatabase().queryFinalized("SELECT data, state FROM downloading_documents ORDER BY date DESC");
+                SQLiteCursor cursor2 = getMessagesStorage().getDatabase().queryFinalized("SELECT data, state, date FROM downloading_documents ORDER BY date DESC");
                 while (cursor2.next()) {
                     NativeByteBuffer data = cursor2.byteBufferValue(0);
                     int state = cursor2.intValue(1);
@@ -1635,7 +1655,12 @@ public class DownloadController extends BaseController implements NotificationCe
                         if (message != null) {
                             message.readAttachPath(data, UserConfig.getInstance(currentAccount).clientUserId);
                             MessageObject messageObject = new MessageObject(currentAccount, message, false, false);
-                            newMessages.add(messageObject);
+                            AstraDownloadFile file = AstraDownloadFile.from(messageObject);
+                            if (file == null) {
+                                data.reuse();
+                                continue;
+                            }
+                            loadedDates.put(file.key, cursor2.longValue(2));
                             if (state == 0) {
                                 downloadingMessages.add(messageObject);
                             } else {
@@ -1654,11 +1679,19 @@ public class DownloadController extends BaseController implements NotificationCe
             getFileLoader().checkMediaExistance(recentlyDownloadedMessages);
 
             AndroidUtilities.runOnUIThread(() -> {
+                if (downloadRevision != revision) {
+                    loadDownloadingFiles();
+                    return;
+                }
                 downloadingFiles.clear();
                 downloadingFiles.addAll(downloadingMessages);
 
                 recentDownloadingFiles.clear();
                 recentDownloadingFiles.addAll(recentlyDownloadedMessages);
+                downloadDates.clear();
+                downloadDates.putAll(loadedDates);
+                restoreNetworkDownloads();
+                getNotificationCenter().postNotificationName(NotificationCenter.onDownloadingFilesChanged);
             });
         });
     }
@@ -1676,12 +1709,18 @@ public class DownloadController extends BaseController implements NotificationCe
     public void updateFilesLoadingPriority() {
         for (int i = downloadingFiles.size() - 1; i >= 0 ; i--) {
             if (getFileLoader().isLoadingFile(downloadingFiles.get(i).getFileName())) {
-                getFileLoader().loadFile(downloadingFiles.get(i).getDocument(), downloadingFiles.get(i), FileLoader.PRIORITY_NORMAL_UP, 0);
+                AstraDownloadFile file = AstraDownloadFile.from(downloadingFiles.get(i));
+                if (file != null) file.load(getFileLoader(), FileLoader.PRIORITY_NORMAL_UP);
             }
         }
     }
 
     public void clearRecentDownloadedFiles() {
+        downloadRevision++;
+        for (MessageObject message : recentDownloadingFiles) {
+            AstraDownloadFile file = AstraDownloadFile.from(message);
+            if (file != null) downloadDates.remove(file.key);
+        }
         recentDownloadingFiles.clear();
         getNotificationCenter().postNotificationName(NotificationCenter.onDownloadingFilesChanged);
 
@@ -1694,50 +1733,57 @@ public class DownloadController extends BaseController implements NotificationCe
         });
     }
 
-    public void deleteRecentFiles(ArrayList<MessageObject> messageObjects) {
-        for (int i = 0; i < messageObjects.size(); i++) {
-            boolean found = false;
-            for (int j = 0; j < recentDownloadingFiles.size(); j++) {
-                if (messageObjects.get(i).getId() == recentDownloadingFiles.get(j).getId() && recentDownloadingFiles.get(j).getDialogId() == messageObjects.get(i).getDialogId()) {
-                    recentDownloadingFiles.remove(j);
-                    found = true;
-                    break;
-                }
-            }
-            if (!found) {
-                for (int j = 0; j < downloadingFiles.size(); j++) {
-                    if (messageObjects.get(i).getId() == downloadingFiles.get(j).getId() && downloadingFiles.get(j).getDialogId() == messageObjects.get(i).getDialogId()) {
-                        downloadingFiles.remove(j);
-                        found = true;
-                        break;
-                    }
-                }
-            }
-            messageObjects.get(i).putInDownloadsStore = false;
-            FileLoader.getInstance(currentAccount).loadFile(messageObjects.get(i).getDocument(), messageObjects.get(i), FileLoader.PRIORITY_LOW, 0);
-            FileLoader.getInstance(currentAccount).cancelLoadFile(messageObjects.get(i).getDocument(), true);
-        }
-        getNotificationCenter().postNotificationName(NotificationCenter.onDownloadingFilesChanged);
-        getMessagesStorage().getStorageQueue().postRunnable(() -> {
-            try {
-                SQLitePreparedStatement state = getMessagesStorage().getDatabase().executeFast("DELETE FROM downloading_documents WHERE hash = ? AND id = ?");
-                for (int i = 0; i < messageObjects.size(); i++) {
-                    state.requery();
-                    state.bindInteger(1, messageObjects.get(i).getDocument().dc_id);
-                    state.bindLong(2, messageObjects.get(i).getDocument().id);
-                    state.step();
+    public void deleteRecentFiles(ArrayList<MessageObject> messages) {
+        removeDownloads(messages, true);
+    }
 
-                    try {
-                        File file = FileLoader.getInstance(currentAccount).getPathToMessage(messageObjects.get(i).messageOwner);
-                        file.delete();
-                    } catch (Exception e) {
-                        FileLog.e(e);
-                    }
-                }
-                state.dispose();
-            } catch (Exception e) {
-                FileLog.e(e);
+    public void removeDownloads(ArrayList<MessageObject> messages, boolean deleteLocalFiles) {
+        downloadRevision++;
+        ArrayList<AstraDownloadFile> files = new ArrayList<>();
+        for (MessageObject message : messages) {
+            AstraDownloadFile file = AstraDownloadFile.from(message);
+            if (file == null) continue;
+            MessageObject queued = findDownload(file.key);
+            if (queued != null) {
+                queued.putInDownloadsStore = false;
+                downloadingFiles.remove(queued);
+                file.cancel(getFileLoader());
             }
+            recentDownloadingFiles.removeIf(item -> {
+                AstraDownloadFile attachment = AstraDownloadFile.from(item);
+                return attachment != null && attachment.key.equals(file.key);
+            });
+            message.putInDownloadsStore = false;
+            downloadDates.remove(file.key);
+            downloadBytes.remove(file.key);
+            MessagesController.getMainSettings(currentAccount).edit().remove("ghost_download_progress_" + file.key).apply();
+            saveDownloadState(file.key, DOWNLOAD_IDLE);
+            files.add(file);
+        }
+        getMessagesStorage().getStorageQueue().postRunnable(() -> {
+            for (AstraDownloadFile file : files) {
+                try {
+                    SQLitePreparedStatement statement = getMessagesStorage().getDatabase().executeFast("DELETE FROM downloading_documents WHERE hash = ? AND id = ?");
+                    try {
+                        statement.bindInteger(1, file.dc);
+                        statement.bindLong(2, file.id);
+                        statement.step();
+                    } finally {
+                        statement.dispose();
+                    }
+                    if (deleteLocalFiles) {
+                        File local = file.localFile(getFileLoader());
+                        if (local != null && local.isFile() && !local.delete()) {
+                            AndroidUtilities.runOnUIThread(() -> NotificationCenter.getGlobalInstance().postNotificationName(
+                                    NotificationCenter.showBulletin, Bulletin.TYPE_ERROR, LocaleController.getString(R.string.AstraDownloadFileError)));
+                        }
+                        file.message.checkMediaExistance();
+                    }
+                } catch (Exception error) {
+                    FileLog.e(error);
+                }
+            }
+            AndroidUtilities.runOnUIThread(() -> getNotificationCenter().postNotificationName(NotificationCenter.onDownloadingFilesChanged));
         });
     }
 

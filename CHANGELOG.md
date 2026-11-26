@@ -1,5 +1,19 @@
 # Changelog
 
+## 13.2.2-astra.150
+
+- Improve Python plugin compatibility, dependency installation and Elyx package imports.
+- Redesign downloads with search, media filters, previews, queue controls and file actions.
+- Cache the device music library and observe new, changed and removed audio files.
+- Improve cloud album selection and add settings backup and restore.
+- Export a single chat to styled HTML with embedded wallpaper and an optional media folder.
+- Add recent photos on attachment-button hold and lens controls on supported round-video cameras.
+- Refine profile music, local status appearance and the quick AstraRelay control.
+- Show release descriptions from the update service and include relay connectivity diagnostics.
+- Fix attachment menu action sorting and restore older session backups across API configurations.
+- Remove the message-to-image export feature.
+
+
 ## 13.2.2-astra.140
 
 - Fix downloading and cancellation bookkeeping for the dedicated voice-message connection.

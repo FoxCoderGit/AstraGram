@@ -299,8 +299,26 @@ public class FileLoadOperation {
         boolean isLocallyCreatedFile(String path);
     }
 
+    public static int getAstraDownloadSpeed() {
+        return MessagesController.getGlobalMainSettings().getInt("astra_download_speed", 0);
+    }
+
+    public static void setAstraDownloadSpeed(int speed) {
+        MessagesController.getGlobalMainSettings().edit().putInt("astra_download_speed", speed).apply();
+    }
+
+    private int astraDownloadSpeed;
+
     private void updateParams() {
-        if ((preloadPrefixSize > 0 || MessagesController.getInstance(currentAccount).getfileExperimentalParams) && !forceSmallChunk) {
+        astraDownloadSpeed = forceSmallChunk || isStory || isStream || key != null || encryptFile
+                ? 0 : getAstraDownloadSpeed();
+        if (astraDownloadSpeed == 2) {
+            downloadChunkSizeBig = 1024 * 1024;
+            maxDownloadRequests = maxDownloadRequestsBig = 12;
+            maxCdnParts = (int) (FileLoader.DEFAULT_MAX_FILE_SIZE / downloadChunkSizeBig);
+            return;
+        }
+        if ((preloadPrefixSize > 0 || astraDownloadSpeed == 1 || MessagesController.getInstance(currentAccount).getfileExperimentalParams) && !forceSmallChunk) {
             downloadChunkSizeBig = 1024 * 512;
             maxDownloadRequests = 8;
             maxDownloadRequestsBig = 8;
@@ -864,6 +882,9 @@ public class FileLoadOperation {
             downloadConnectionsCount = premium ? ConnectionsManager.DownloadConnectionsCount : 2;
             int byteBudget = (premium ? 16 : 2) * 1024 * 1024;
             currentMaxDownloadRequests = byteBudget / currentDownloadChunkSize;
+            if (astraDownloadSpeed != 0 && totalBytesCount >= bigFileSizeFrom) {
+                currentMaxDownloadRequests = Math.max(currentMaxDownloadRequests, maxDownloadRequestsBig);
+            }
         }
     }
 

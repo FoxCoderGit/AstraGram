@@ -4946,11 +4946,12 @@ public class MediaDataController extends BaseController {
                             if (MessageObject.isMusicMessage(message)) {
                                 message.id = cursor.intValue(1);
                                 message.dialog_id = dialogId;
-                                arrayList.add(0, new MessageObject(currentAccount, message, false, true));
+                                arrayList.add(new MessageObject(currentAccount, message, false, true));
                             }
                         }
                     }
                     cursor.dispose();
+                    java.util.Collections.reverse(arrayList);
                 }
             } catch (Exception e) {
                 FileLog.e(e);

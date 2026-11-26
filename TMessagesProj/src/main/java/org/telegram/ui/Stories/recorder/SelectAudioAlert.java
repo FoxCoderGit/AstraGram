@@ -5,10 +5,8 @@ import static org.telegram.messenger.LocaleController.formatString;
 import static org.telegram.messenger.LocaleController.getString;
 
 import android.content.Context;
-import android.database.Cursor;
 import android.graphics.Canvas;
 import android.os.Build;
-import android.provider.MediaStore;
 import android.text.Editable;
 import android.text.TextUtils;
 import android.view.Gravity;
@@ -23,13 +21,13 @@ import org.telegram.ui.recyclerview.LinearSmoothScrollerCustom;
 import androidx.recyclerview.widget.RecyclerView;
 
 import org.telegram.messenger.AndroidUtilities;
-import org.telegram.messenger.ApplicationLoader;
 import org.telegram.messenger.DownloadController;
 import org.telegram.messenger.FileLoader;
 import org.telegram.messenger.FileLog;
 import org.telegram.messenger.LiteMode;
 import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.MediaController;
+import org.telegram.messenger.DeviceMusicLibrary;
 import org.telegram.messenger.MessageObject;
 import org.telegram.messenger.MessagesController;
 import org.telegram.messenger.NotificationCenter;
@@ -211,7 +209,6 @@ public class SelectAudioAlert extends BottomSheetWithRecyclerListView implements
             loadGlobalAudio();
         } else {
             savedMusicList = null;
-            loadLocalAudio();
         }
 
         recyclerListView.setOnScrollListener(new RecyclerView.OnScrollListener() {
@@ -632,94 +629,36 @@ public class SelectAudioAlert extends BottomSheetWithRecyclerListView implements
     }
 
     private boolean loadingLocalAudio;
-    private void loadLocalAudio() {
-        if (!local) return;
-        if (loadingLocalAudio) return;
-        loadingLocalAudio = true;
-        Utilities.globalQueue.postRunnable(() -> {
-            String[] projection = {
-                    MediaStore.Audio.Media._ID,
-                    MediaStore.Audio.Media.ARTIST,
-                    MediaStore.Audio.Media.TITLE,
-                    MediaStore.Audio.Media.DATA,
-                    MediaStore.Audio.Media.DURATION,
-                    MediaStore.Audio.Media.ALBUM
-            };
+    private final DeviceMusicLibrary.Listener deviceMusicListener = this::onDeviceMusic;
+    private final java.util.HashMap<DeviceMusicLibrary.Track, MessageObject> deviceEntries = new java.util.HashMap<>();
+    private int nextDeviceMessageId = -2000000000;
 
-            final ArrayList<MessageObject> newAudioEntries = new ArrayList<>();
-            try (Cursor cursor = ApplicationLoader.applicationContext.getContentResolver().query(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, projection, MediaStore.Audio.Media.IS_MUSIC + " != 0", null, MediaStore.Audio.Media.TITLE)) {
-                int id = -2000000000;
-                while (cursor.moveToNext()) {
-                    MediaController.AudioEntry audioEntry = new MediaController.AudioEntry();
-                    audioEntry.id = cursor.getInt(0);
-                    audioEntry.author = cursor.getString(1);
-                    audioEntry.title = cursor.getString(2);
-                    audioEntry.path = cursor.getString(3);
-                    audioEntry.duration = (int) (cursor.getLong(4) / 1000);
-                    audioEntry.genre = cursor.getString(5);
-
-                    File file = new File(audioEntry.path);
-
-                    TLRPC.TL_message message = new TLRPC.TL_message();
-                    message.out = true;
-                    message.id = id;
-                    message.peer_id = new TLRPC.TL_peerUser();
-                    message.from_id = new TLRPC.TL_peerUser();
-                    message.peer_id.user_id = message.from_id.user_id = UserConfig.getInstance(currentAccount).getClientUserId();
-                    message.date = (int) (System.currentTimeMillis() / 1000);
-                    message.message = "";
-                    message.attachPath = audioEntry.path;
-                    message.media = new TLRPC.TL_messageMediaDocument();
-                    message.media.flags |= 3;
-                    message.media.document = new TLRPC.TL_document();
-                    message.flags |= TLRPC.MESSAGE_FLAG_HAS_MEDIA | TLRPC.MESSAGE_FLAG_HAS_FROM_ID;
-
-                    String ext = FileLoader.getFileExtension(file);
-
-                    message.media.document.id = 0;
-                    message.media.document.access_hash = 0;
-                    message.media.document.file_reference = new byte[0];
-                    message.media.document.date = message.date;
-                    message.media.document.mime_type = "audio/" + (ext.length() > 0 ? ext : "mp3");
-                    message.media.document.size = (int) file.length();
-                    message.media.document.dc_id = 0;
-
-                    TLRPC.TL_documentAttributeAudio attributeAudio = new TLRPC.TL_documentAttributeAudio();
-                    attributeAudio.duration = audioEntry.duration;
-                    attributeAudio.title = audioEntry.title;
-                    attributeAudio.performer = audioEntry.author;
-                    attributeAudio.flags |= 3;
-                    message.media.document.attributes.add(attributeAudio);
-
-                    TLRPC.TL_documentAttributeFilename fileName = new TLRPC.TL_documentAttributeFilename();
-                    fileName.file_name = file.getName();
-                    message.media.document.attributes.add(fileName);
-
-                    audioEntry.messageObject = new MessageObject(currentAccount, message, false, true);
-
-                    newAudioEntries.add(audioEntry.messageObject);
-                    id--;
-                }
-            } catch (Exception e) {
-                FileLog.e(e);
+    private void onDeviceMusic(java.util.List<DeviceMusicLibrary.Track> tracks, boolean loading) {
+        loadingLocalAudio = loading;
+        deviceEntries.keySet().retainAll(new java.util.HashSet<>(tracks));
+        localAudio.clear();
+        for (DeviceMusicLibrary.Track track : tracks) {
+            MessageObject message = deviceEntries.get(track);
+            if (message == null) {
+                message = track.createEntry(currentAccount, nextDeviceMessageId--).resolveMessage();
+                deviceEntries.put(track, message);
             }
-            AndroidUtilities.runOnUIThread(() -> {
-                loadingLocalAudio = false;
-                localAudio.addAll(newAudioEntries);
-                adapter.update(true);
-            });
-        });
+            localAudio.add(message);
+        }
+        adapter.update(true);
     }
 
     @Override
     public void onAttachedToWindow() {
         super.onAttachedToWindow();
+        if (local) DeviceMusicLibrary.getInstance().subscribe(deviceMusicListener);
         NotificationCenter.getInstance(currentAccount).addWeakObserver(this, NotificationCenter.musicListLoaded);
     }
 
     @Override
     public void onDetachedFromWindow() {
         super.onDetachedFromWindow();
+        DeviceMusicLibrary.getInstance().unsubscribe(deviceMusicListener);
         NotificationCenter.getInstance(currentAccount).removeObserver(this, NotificationCenter.musicListLoaded);
     }
 

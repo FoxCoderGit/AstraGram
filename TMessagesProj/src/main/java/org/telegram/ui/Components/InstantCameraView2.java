@@ -79,6 +79,9 @@ public final class InstantCameraView2 extends InstantCameraViewBase {
     private final BackupImageView textureOverlayView;
     private final LinearLayout buttonsLayout;
     private final FlashViews.ImageViewInvertable switchCameraButton;
+    private final android.widget.TextView wideLensButton;
+    private final android.widget.TextView mainLensButton;
+    private RoundVideoSession.CameraFacing previousLensFacing;
     private final FlashViews.ImageViewInvertable flashButton;
     private final ImageView muteImageView;
     private final FlashViews flashViews;
@@ -259,6 +262,8 @@ public final class InstantCameraView2 extends InstantCameraViewBase {
         flashButton.setScaleType(ImageView.ScaleType.CENTER);
         buttonsLayout.addView(flashButton, LayoutHelper.createLinear(44, 44));
         flashButton.setOnClickListener(view -> toggleFlash());
+        wideLensButton = lensButton(context, "0,5×", 0.5f);
+        mainLensButton = lensButton(context, "1×", 1f);
 
         buttonIconSize = dp(isNewDesign ? 24 : 28);
         switchCameraDrawable = new RLottieDrawable(
@@ -392,6 +397,7 @@ public final class InstantCameraView2 extends InstantCameraViewBase {
         showInitialPlaceholder();
         upload = new TelegramRoundVideoUpload(currentAccount, secretChat);
         activeOutputResolution = SharedSettings.roundVideoOutputResolution.get();
+        previousLensFacing = null;
         session = new RoundVideoSession.Builder(getContext(), textureView)
                 .setMaximumDurationMs(org.telegram.messenger.GhostMediaTools.RECORDING_LIMIT_MS)
                 .setOutputDirectory(new File(ApplicationLoader.getFilesDirFixed(), "cache"))
@@ -787,6 +793,11 @@ public final class InstantCameraView2 extends InstantCameraViewBase {
                 @NonNull RoundVideoSession.CameraCapabilities cameraCapabilities
         ) {
             capabilities = cameraCapabilities;
+            final RoundVideoSession.CameraFacing facing = cameraCapabilities.getActiveFacing();
+            if (previousLensFacing != facing && supportsWideLens()) {
+                applyLens(RoundVideoSettings.getPreferredLens(), false);
+            }
+            previousLensFacing = facing;
             if (cameraCapabilities.getActiveFacing() != null) {
                 SharedSettings.roundVideoLastCamera.set(cameraCapabilities.getActiveFacing());
             }
@@ -1062,7 +1073,40 @@ public final class InstantCameraView2 extends InstantCameraViewBase {
         flashButton.setEnabled(cameraControls
                 && capabilities != null
                 && capabilities.getFlashType() != RoundVideoSession.FlashType.NONE);
+        final boolean showLens = cameraControls && supportsWideLens();
+        wideLensButton.setVisibility(showLens ? VISIBLE : GONE);
+        mainLensButton.setVisibility(showLens ? VISIBLE : GONE);
         updateFlashIcon();
+    }
+
+    private android.widget.TextView lensButton(Context context, String label, float ratio) {
+        android.widget.TextView button = new android.widget.TextView(context);
+        button.setText(label);
+        button.setTextColor(android.graphics.Color.WHITE);
+        button.setGravity(Gravity.CENTER);
+        button.setTypeface(AndroidUtilities.bold());
+        button.setTextSize(12);
+        button.setVisibility(GONE);
+        button.setBackground(Theme.createSelectorDrawable(0x55FFFFFF));
+        button.setOnClickListener(v -> applyLens(ratio, true));
+        buttonsLayout.addView(button, LayoutHelper.createLinear(38, 44));
+        return button;
+    }
+
+    private boolean supportsWideLens() {
+        return session != null && capabilities != null
+                && capabilities.getActiveFacing() == RoundVideoSession.CameraFacing.BACK
+                && session.getMinimumZoomRatio() <= 0.5f && capabilities.getMaximumZoomRatio() > 1f;
+    }
+
+    private void applyLens(float ratio, boolean remember) {
+        if (!supportsWideLens()) return;
+        if (zoomResetAnimator != null) zoomResetAnimator.cancel();
+        zoomProgress = (ratio - 1f) / (capabilities.getMaximumZoomRatio() - 1f);
+        session.setZoom(zoomProgress);
+        wideLensButton.setAlpha(ratio < 1f ? 1f : 0.65f);
+        mainLensButton.setAlpha(ratio == 1f ? 1f : 0.65f);
+        if (remember) RoundVideoSettings.setPreferredLens(ratio);
     }
 
     private void togglePreviewMuted() {

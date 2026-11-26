@@ -49,6 +49,7 @@ import android.transition.TransitionValues;
 import android.transition.Visibility;
 import android.util.Pair;
 import android.util.SparseArray;
+import android.util.LongSparseArray;
 import android.util.SparseBooleanArray;
 import android.util.TypedValue;
 import android.view.Gravity;
@@ -6178,7 +6179,7 @@ public class SharedMediaLayout extends FrameLayout implements Theme.Colorable, N
                     }
                     int type = MediaDataController.getMediaType(obj.messageOwner);
                     if (type == -1) {
-                        return;
+                        continue;
                     }
                     if (sharedMediaData[type].startReached && sharedMediaData[type].addMessage(obj, obj.getDialogId() == dialog_id ? 0 : 1, true, enc)) {
                         updated = true;
@@ -9073,7 +9074,8 @@ public class SharedMediaLayout extends FrameLayout implements Theme.Colorable, N
         private Runnable searchRunnable;
         protected ArrayList<MessageObject> globalSearch = new ArrayList<>();
         private int reqId = 0;
-        private int lastReqId;
+        private int searchGeneration;
+        private ArrayList<MessageObject> serverResults = new ArrayList<>();
         private int currentType;
         private int searchesInProgress;
 
@@ -9082,19 +9084,8 @@ public class SharedMediaLayout extends FrameLayout implements Theme.Colorable, N
             currentType = type;
         }
 
-        public void queryServerSearch(final String query, final int max_id, long did, long topicId) {
+        private void queryServerSearch(final String query, final int max_id, long did, long topicId, int generation) {
             if (DialogObject.isEncryptedDialog(did)) {
-                return;
-            }
-            if (reqId != 0) {
-                profileActivity.getConnectionsManager().cancelRequest(reqId, true);
-                reqId = 0;
-                searchesInProgress--;
-            }
-            if (query == null || query.length() == 0) {
-                globalSearch.clear();
-                lastReqId = 0;
-                notifyDataSetChanged();
                 return;
             }
             TLRPC.TL_messages_search req = new TLRPC.TL_messages_search();
@@ -9121,11 +9112,10 @@ public class SharedMediaLayout extends FrameLayout implements Theme.Colorable, N
             if (req.peer == null) {
                 return;
             }
-            final int currentReqId = ++lastReqId;
             searchesInProgress++;
             reqId = profileActivity.getConnectionsManager().sendRequest(req, (response, error) -> {
                 final ArrayList<MessageObject> messageObjects = new ArrayList<>();
-                if (error == null) {
+                if (response instanceof TLRPC.messages_Messages) {
                     TLRPC.messages_Messages res = (TLRPC.messages_Messages) response;
                     for (int a = 0; a < res.messages.size(); a++) {
                         TLRPC.Message message = res.messages.get(a);
@@ -9136,32 +9126,14 @@ public class SharedMediaLayout extends FrameLayout implements Theme.Colorable, N
                     }
                 }
                 AndroidUtilities.runOnUIThread(() -> {
-                    if (reqId != 0) {
-                        if (currentReqId == lastReqId) {
-                            int oldItemCounts = getItemCount();
-                            globalSearch = messageObjects;
-                            searchesInProgress--;
-                            int count = getItemCount();
-                            if (searchesInProgress == 0 || count != 0) {
-                                switchToCurrentSelectedMode(false);
-                            }
-
-                            for (int a = 0; a < mediaPages.length; a++) {
-                                if (mediaPages[a].selectedType == currentType) {
-                                    if (searchesInProgress == 0 && count == 0) {
-                                        mediaPages[a].emptyView.title.setText(LocaleController.formatString("NoResultFoundFor", R.string.NoResultFoundFor, query));
-                                        mediaPages[a].emptyView.button.setVisibility(View.GONE);
-                                        mediaPages[a].emptyView.showProgress(false, true);
-                                    } else if (oldItemCounts == 0) {
-                                        animateItemsEnter(mediaPages[a].listView, 0, null);
-                                    }
-                                }
-                            }
-                            notifyDataSetChanged();
-
-                        }
-                        reqId = 0;
+                    if (generation != searchGeneration) {
+                        return;
                     }
+                    reqId = 0;
+                    int oldItemCount = getItemCount();
+                    serverResults = messageObjects;
+                    searchesInProgress--;
+                    refreshSearchResults(query, oldItemCount);
                 });
             }, ConnectionsManager.RequestFlagFailOnServerErrors);
             profileActivity.getConnectionsManager().bindRequestToGuid(reqId, profileActivity.getClassGuid());
@@ -9173,23 +9145,20 @@ public class SharedMediaLayout extends FrameLayout implements Theme.Colorable, N
                 searchRunnable = null;
             }
 
+            final int generation = ++searchGeneration;
+            if (reqId != 0) {
+                profileActivity.getConnectionsManager().cancelRequest(reqId, true);
+                reqId = 0;
+            }
+            searchesInProgress = 0;
+            serverResults.clear();
             if (!searchResult.isEmpty() || !globalSearch.isEmpty()) {
                 searchResult.clear();
                 globalSearch.clear();
                 notifyDataSetChanged();
             }
 
-            if (TextUtils.isEmpty(query)) {
-                if (!searchResult.isEmpty() || !globalSearch.isEmpty() || searchesInProgress != 0) {
-                    searchResult.clear();
-                    globalSearch.clear();
-                    if (reqId != 0) {
-                        profileActivity.getConnectionsManager().cancelRequest(reqId, true);
-                        reqId = 0;
-                        searchesInProgress--;
-                    }
-                }
-            } else {
+            if (!TextUtils.isEmpty(query)) {
                 for (int a = 0; a < mediaPages.length; a++) {
                     if (mediaPages[a].selectedType == currentType) {
                         mediaPages[a].emptyView.showProgress(true, animated);
@@ -9198,11 +9167,12 @@ public class SharedMediaLayout extends FrameLayout implements Theme.Colorable, N
 
 
                 AndroidUtilities.runOnUIThread(searchRunnable = () -> {
-                    if (!sharedMediaData[currentType].messages.isEmpty() && (currentType == 1 || currentType == 4)) {
+                    searchRunnable = null;
+                    if (!sharedMediaData[currentType].messages.isEmpty() && currentType == 1) {
                         MessageObject messageObject = sharedMediaData[currentType].messages.get(sharedMediaData[currentType].messages.size() - 1);
-                        queryServerSearch(query, messageObject.getId(), messageObject.getDialogId(), dialog_id == profileActivity.getUserConfig().getClientUserId() ? messageObject.getSavedDialogId() : 0);
-                    } else if (currentType == 3) {
-                        queryServerSearch(query, 0, dialog_id, topicId);
+                        queryServerSearch(query, messageObject.getId(), messageObject.getDialogId(), dialog_id == profileActivity.getUserConfig().getClientUserId() ? messageObject.getSavedDialogId() : 0, generation);
+                    } else if (currentType == 1 || currentType == 3 || currentType == 4) {
+                        queryServerSearch(query, 0, dialog_id, topicId, generation);
                     }
                     if (currentType == 1 || currentType == 4) {
                         final ArrayList<MessageObject> copy = new ArrayList<>(sharedMediaData[currentType].messages);
@@ -9210,7 +9180,7 @@ public class SharedMediaLayout extends FrameLayout implements Theme.Colorable, N
                         Utilities.searchQueue.postRunnable(() -> {
                             String search1 = query.trim().toLowerCase();
                             if (search1.length() == 0) {
-                                updateSearchResults(new ArrayList<>());
+                                updateSearchResults(query, generation, new ArrayList<>());
                                 return;
                             }
                             String search2 = LocaleController.getInstance().getTranslitString(search1);
@@ -9230,20 +9200,14 @@ public class SharedMediaLayout extends FrameLayout implements Theme.Colorable, N
                                 for (int b = 0; b < search.length; b++) {
                                     String q = search[b];
                                     String name = messageObject.getDocumentName();
-                                    if (name == null || name.length() == 0) {
-                                        continue;
-                                    }
-                                    name = name.toLowerCase();
-                                    if (name.contains(q)) {
+                                    if (name != null && name.toLowerCase().contains(q)) {
                                         resultArray.add(messageObject);
                                         break;
                                     }
                                     if (currentType == 4) {
-                                        TLRPC.Document document;
-                                        if (messageObject.type == MessageObject.TYPE_TEXT) {
-                                            document = MessageObject.getMedia(messageObject.messageOwner).webpage.document;
-                                        } else {
-                                            document = MessageObject.getMedia(messageObject.messageOwner).document;
+                                        TLRPC.Document document = messageObject.getDocument();
+                                        if (document == null) {
+                                            continue;
                                         }
                                         boolean ok = false;
                                         for (int c = 0; c < document.attributes.size(); c++) {
@@ -9266,41 +9230,61 @@ public class SharedMediaLayout extends FrameLayout implements Theme.Colorable, N
                                 }
                             }
 
-                            updateSearchResults(resultArray);
+                            updateSearchResults(query, generation, resultArray);
                         });
+                    } else if (searchesInProgress == 0) {
+                        refreshSearchResults(query, 0);
                     }
                 }, 300);
             }
         }
 
-        private void updateSearchResults(final ArrayList<MessageObject> documents) {
+        private void updateSearchResults(String query, int generation, ArrayList<MessageObject> documents) {
             AndroidUtilities.runOnUIThread(() -> {
-                if (!searching) {
+                if (generation != searchGeneration) {
                     return;
                 }
                 searchesInProgress--;
                 int oldItemCount = getItemCount();
                 searchResult = documents;
-                int count = getItemCount();
-                if (searchesInProgress == 0 || count != 0) {
-                    switchToCurrentSelectedMode(false);
-                }
+                refreshSearchResults(query, oldItemCount);
+            });
+        }
 
-                for (int a = 0; a < mediaPages.length; a++) {
-                    if (mediaPages[a].selectedType == currentType) {
-                        if (searchesInProgress == 0 && count == 0) {
-                            mediaPages[a].emptyView.title.setText(getString("NoResult", R.string.NoResult));
-                            mediaPages[a].emptyView.button.setVisibility(View.GONE);
-                            mediaPages[a].emptyView.showProgress(false, true);
-                        } else if (oldItemCount == 0) {
-                            animateItemsEnter(mediaPages[a].listView, 0, null);
-                        }
+        private void refreshSearchResults(String query, int oldItemCount) {
+            globalSearch.clear();
+            LongSparseArray<SparseBooleanArray> localIds = new LongSparseArray<>();
+            for (MessageObject message : searchResult) {
+                long dialogId = message.getDialogId();
+                SparseBooleanArray ids = localIds.get(dialogId);
+                if (ids == null) {
+                    ids = new SparseBooleanArray();
+                    localIds.put(dialogId, ids);
+                }
+                ids.put(message.getId(), true);
+            }
+            for (MessageObject message : serverResults) {
+                SparseBooleanArray ids = localIds.get(message.getDialogId());
+                if (ids == null || !ids.get(message.getId())) {
+                    globalSearch.add(message);
+                }
+            }
+            int count = getItemCount();
+            if (searching && (searchesInProgress == 0 || count != 0)) {
+                switchToCurrentSelectedMode(false);
+            }
+            for (MediaPage mediaPage : mediaPages) {
+                if (mediaPage.selectedType == currentType) {
+                    if (searchesInProgress == 0 && count == 0) {
+                        mediaPage.emptyView.title.setText(LocaleController.formatString("NoResultFoundFor", R.string.NoResultFoundFor, query));
+                        mediaPage.emptyView.button.setVisibility(View.GONE);
+                        mediaPage.emptyView.showProgress(false, true);
+                    } else if (oldItemCount == 0 && count != 0) {
+                        animateItemsEnter(mediaPage.listView, 0, null);
                     }
                 }
-
-                notifyDataSetChanged();
-
-            });
+            }
+            notifyDataSetChanged();
         }
 
         @Override

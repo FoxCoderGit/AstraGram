@@ -36,9 +36,9 @@ import java.util.ArrayList;
 
 public class GhostPluginsActivity extends BaseFragment {
     private static final int REQUEST_PLUGIN = 9107;
-    private static final String[] BUILTINS={GhostOptionalFeatures.MUSIC,GhostOptionalFeatures.DRAWING,GhostOptionalFeatures.CALCULATOR,GhostOptionalFeatures.VIDEO,GhostOptionalFeatures.EXTERA_SUPPORTERS};
-    private static final String[] BUILTIN_NAMES={"Я.Музыка","Рисовка","Калькулятор сообщений","yt-dlp","Поддержавшие exteraGram"};
-    private static final String[] BUILTIN_DESCRIPTIONS={"Поиск, понравившиеся треки и отправка музыки","Рисование голосовых сообщений","Подсказка с результатом выражения в поле ввода","Загрузка видео по ссылкам. Работает только с включённым VPN","Отметки поддержки exteraGram из его публичного API"};
+    private static final String[] BUILTINS={GhostOptionalFeatures.MUSIC,GhostOptionalFeatures.DRAWING,GhostOptionalFeatures.CALCULATOR,GhostOptionalFeatures.VIDEO,GhostOptionalFeatures.EXTERA_SUPPORTERS,GhostOptionalFeatures.CHAT_EXPORT};
+    private static final String[] BUILTIN_NAMES={"Я.Музыка","Рисовка","Калькулятор сообщений","yt-dlp","Поддержавшие exteraGram","Экспорт чата"};
+    private static final String[] BUILTIN_DESCRIPTIONS={"Поиск, понравившиеся треки и отправка музыки","Рисование голосовых сообщений","Подсказка с результатом выражения в поле ввода","Загрузка видео по ссылкам. Работает только с включённым VPN","Отметки поддержки exteraGram из его публичного API","Сохранение переписки с оформлением чата в index.html"};
 
     private static final int MANAGEMENT_HEADER=BUILTINS.length+1, ENGINE_ROW=MANAGEMENT_HEADER+1, INSTALL_ROW=ENGINE_ROW+1, RELOAD_ROW=INSTALL_ROW+1, INSTALLED_HEADER=RELOAD_ROW+1, INSTALLED_START=INSTALLED_HEADER+1;
 
@@ -283,7 +283,7 @@ public class GhostPluginsActivity extends BaseFragment {
                 content=org.telegram.ui.Components.GhostSettingsCards.row(context,title,null,"›",null,position==RELOAD_ROW?R.drawable.msg_retry:R.drawable.msg_download,null);
             } else if (type == 2) {
                 if(position>=1&&position<=BUILTINS.length){
-                    int[] icons={R.drawable.bot_music,R.drawable.msg_edit,R.drawable.msg_customize,R.drawable.msg_download,R.drawable.outline_shield_check};
+                    int[] icons={R.drawable.bot_music,R.drawable.msg_edit,R.drawable.msg_customize,R.drawable.msg_download,R.drawable.outline_shield_check,R.drawable.msg_filehq};
                     content=org.telegram.ui.Components.GhostSettingsCards.row(context,BUILTIN_NAMES[position-1],BUILTIN_DESCRIPTIONS[position-1],null,GhostOptionalFeatures.enabled(BUILTINS[position-1]),icons[position-1],null);
                 } else if(position==ENGINE_ROW){content=org.telegram.ui.Components.GhostSettingsCards.row(context,"Движок внешних плагинов",safeMode?"Безопасный режим после сбоя":"Python-плагины и Java-хуки",null,engineEnabled,R.drawable.msg_customize,null);
                 }else{

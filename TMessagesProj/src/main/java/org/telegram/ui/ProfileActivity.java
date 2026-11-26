@@ -3839,6 +3839,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
 //        sharedMediaLayout.setBackgroundColor(getThemedColor(Theme.key_windowBackgroundWhite));
         if (userId == 0 || imageUpdater == null || myProfile) {
             musicView = new ProfileMusicView(context, resourcesProvider);
+            musicView.setVisibility(View.GONE);
             balanceView = new ProfileBalanceView(context, resourcesProvider);
             musicView.setTrailingView(balanceView);
             if (buttonsGlass != null) {
@@ -3854,37 +3855,6 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             if (userInfo != null && userInfo.saved_music != null) {
                 musicView.setMusicDocument(userInfo.saved_music);
             }
-            musicView.setOnClickListener(v -> {
-                if (savedMusicList == null) {
-                    if (
-                        MediaController.getInstance().currentSavedMusicList != null &&
-                        MediaController.getInstance().currentSavedMusicList.currentAccount == currentAccount &&
-                        MediaController.getInstance().currentSavedMusicList.dialogId == getDialogId()) {
-                        savedMusicList = MediaController.getInstance().currentSavedMusicList;
-                    } else {
-                        savedMusicList = new MessagesController.SavedMusicList(currentAccount, getDialogId());
-                        if (userInfo != null && userInfo.saved_music != null) {
-                            savedMusicList.setup(userInfo.saved_music);
-                        }
-                    }
-                }
-                if (!savedMusicList.list.isEmpty()) {
-                    boolean sameList = false;
-                    if (
-                        MediaController.getInstance().currentSavedMusicList != savedMusicList ||
-                        !MediaController.getInstance().isPlayingMessage(savedMusicList.list.get(0))
-                    ) {
-                        MediaController.getInstance().cleanup();
-                    } else {
-                        sameList = true;
-                    }
-                    MediaController.getInstance().currentSavedMusicList = savedMusicList;
-                    MediaController.getInstance().getPlaylist().clear();
-                    MediaController.getInstance().getPlaylist().addAll(savedMusicList.list);
-                    if (!sameList) MediaController.getInstance().playMessage(savedMusicList.list.get(0));
-                    showDialog(new AudioPlayerAlert(getContext(), getResourceProvider()));
-                }
-            });
 
             actionsView = new ProfileActionsView(context, dp(74));
             setActionsMode();
@@ -6206,7 +6176,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
     private int getActionsExtraHeight(boolean withPills) {
         if (userId != 0 && imageUpdater != null && !myProfile)
             return 0;
-        return dp(74 + (withPills && (hasMusic || hasBalance) ? 25 : 0));
+        return dp(74 + (withPills && hasBalance ? 25 : 0));
     }
 
     private int getHeaderExtraHeight() {
@@ -7478,6 +7448,38 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                 .format(new java.util.Date(until * 1000L));
     }
 
+    private void openProfileMusic() {
+        if (savedMusicList == null) {
+            if (
+                MediaController.getInstance().currentSavedMusicList != null &&
+                MediaController.getInstance().currentSavedMusicList.currentAccount == currentAccount &&
+                MediaController.getInstance().currentSavedMusicList.dialogId == getDialogId()) {
+                savedMusicList = MediaController.getInstance().currentSavedMusicList;
+            } else {
+                savedMusicList = new MessagesController.SavedMusicList(currentAccount, getDialogId());
+                if (userInfo != null && userInfo.saved_music != null) {
+                    savedMusicList.setup(userInfo.saved_music);
+                }
+            }
+        }
+        if (!savedMusicList.list.isEmpty()) {
+            boolean sameList = false;
+            if (
+                MediaController.getInstance().currentSavedMusicList != savedMusicList ||
+                !MediaController.getInstance().isPlayingMessage(savedMusicList.list.get(0))
+            ) {
+                MediaController.getInstance().cleanup();
+            } else {
+                sameList = true;
+            }
+            MediaController.getInstance().currentSavedMusicList = savedMusicList;
+            MediaController.getInstance().getPlaylist().clear();
+            MediaController.getInstance().getPlaylist().addAll(savedMusicList.list);
+            if (!sameList) MediaController.getInstance().playMessage(savedMusicList.list.get(0));
+            showDialog(new AudioPlayerAlert(getContext(), getResourceProvider()));
+        }
+    }
+
     private boolean processOnClickOrPress(final int position, final View view, final float x, final float y) {
         if (position == ghostProfileDetailsRow) {
             ghostProfileDetailsExpanded = !ghostProfileDetailsExpanded;
@@ -7485,7 +7487,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             if (listAdapter != null && ghostProfileDetailsRow >= 0) listAdapter.notifyItemChanged(ghostProfileDetailsRow);
             return true;
         } else if (position == ghostMusicCardRow) {
-            if (musicView != null) musicView.performClick();
+            openProfileMusic();
             return true;
         } else if (position == ghostMutualContactRow) {
             showDialog(new AlertDialog.Builder(getParentActivity(), resourcesProvider)
@@ -11070,7 +11072,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             }
 
             if (emptyRow < 0 && emptyRow2 < 0) {
-                if (hasMusic || hasBalance || peerColor != null || actionsView == null) {
+                if (hasBalance || peerColor != null || actionsView == null) {
                     emptyRow2 = rowCount++;
                 } else {
                     emptyRow = rowCount++;
@@ -11306,7 +11308,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             }
         } else if (isTopic) {
             if (emptyRow < 0 && emptyRow2 < 0) {
-                if (hasMusic || hasBalance || peerColor != null || actionsView == null) {
+                if (hasBalance || peerColor != null || actionsView == null) {
                     emptyRow2 = rowCount++;
                 } else {
                     emptyRow = rowCount++;
@@ -11326,7 +11328,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         } else if (chatId != 0) {
             if (chatInfo != null && (!TextUtils.isEmpty(chatInfo.about) || chatInfo.location instanceof TLRPC.TL_channelLocation) || ChatObject.isPublic(currentChat)) {
                 if (emptyRow < 0 && emptyRow2 < 0) {
-                    if (hasMusic || hasBalance || peerColor != null || actionsView == null) {
+                    if (hasBalance || peerColor != null || actionsView == null) {
                         emptyRow2 = rowCount++;
                     } else {
                         emptyRow = rowCount++;
@@ -11349,7 +11351,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                 }
             }
             if (emptyRow < 0 && emptyRow2 < 0) {
-                if (hasMusic || hasBalance || peerColor != null || actionsView == null) {
+                if (hasBalance || peerColor != null || actionsView == null) {
                     emptyRow2 = rowCount++;
                 } else {
                     emptyRow = rowCount++;
@@ -11528,7 +11530,6 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             if (userInfo != null) {
                 musicView.setMusicDocument(userInfo.saved_music);
             }
-            musicView.setVisibility(hasMusic ? View.VISIBLE : View.GONE);
             if (hasBalance) {
                 balanceView.setBalance(userInfo.wallet_card.balance);
             }
@@ -11691,7 +11692,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             actionsView.updatePosition(listView.getMeasuredWidth(), dp(74));
         } else {
             actionsView.clipHeight = -1;
-            float bottom = extraHeight + newTop - dp(hasMusic || hasBalance ? 25 : 0);
+            float bottom = extraHeight + newTop - dp(hasBalance ? 25 : 0);
             float height = Math.min(dp(74), bottom - newTop);
             actionsView.updatePosition(bottom - height, height);
         }

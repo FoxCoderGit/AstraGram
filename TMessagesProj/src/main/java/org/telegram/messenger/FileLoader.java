@@ -34,6 +34,7 @@ public class FileLoader extends BaseController {
 
     private static final int PRIORITY_STREAM = 4;
     public static final int PRIORITY_HIGH = 3;
+    public static final int PRIORITY_NEXT = 5;
     public static final int PRIORITY_NORMAL_UP = 2;
     public static final int PRIORITY_NORMAL = 1;
     public static final int PRIORITY_LOW = 0;
@@ -106,6 +107,8 @@ public class FileLoader extends BaseController {
     private int getPriorityValue(int priorityType) {
         if (priorityType == PRIORITY_STREAM) {
             return Integer.MAX_VALUE;
+        } else if (priorityType == PRIORITY_NEXT) {
+            return FileLoaderPriorityQueue.PRIORITY_VALUE_MAX - 1;
         } else if (priorityType == PRIORITY_HIGH) {
             priorityIncreasePointer++;
             return FileLoaderPriorityQueue.PRIORITY_VALUE_MAX + priorityIncreasePointer;
@@ -615,6 +618,7 @@ public class FileLoader extends BaseController {
             if (operation != null) {
                 FileLoaderPriorityQueue queue = operation.getQueue();
                 queue.cancel(operation);
+                queue.checkLoadingOperations();
             }
         });
         if (removed && document != null) {
@@ -839,12 +843,21 @@ public class FileLoader extends BaseController {
             FileLog.e(new RuntimeException("cant get hash from " + document));
             return null;
         }
+        if (stream == null && DownloadController.isManuallyPaused(currentAccount, fileName)) {
+            loadOperationPathsUI.remove(fileName);
+            return null;
+        }
+
         if (cacheType != 10 && !TextUtils.isEmpty(fileName) && !fileName.contains("" + Integer.MIN_VALUE)) {
             loadOperationPathsUI.put(fileName, new LoadOperationUIObject());
         }
 
-        if (document != null && parentObject instanceof MessageObject && ((MessageObject) parentObject).putInDownloadsStore && !((MessageObject) parentObject).isAnyKindOfSticker()) {
-            getDownloadController().startDownloadFile(document, (MessageObject) parentObject);
+        if (cacheType != 10 && parentObject instanceof MessageObject) {
+            MessageObject message = (MessageObject) parentObject;
+            if (message.putInDownloadsStore && !message.isAnyKindOfSticker() && !message.isSecretMedia()) {
+                AstraDownloadFile file = AstraDownloadFile.from(message);
+                if (file != null && file.key.equals(fileName)) getDownloadController().startDownloadFile(file);
+            }
         }
 
         final String finalFileName = fileName;
@@ -1029,15 +1042,15 @@ public class FileLoader extends BaseController {
 
             @Override
             public void didFailedLoadingFile(FileLoadOperation operation, int reason) {
-                loadOperationPathsUI.remove(fileName);
+                if (reason != 1 || loadOperationPaths.get(fileName) == operation) {
+                    loadOperationPathsUI.remove(fileName);
+                }
                 checkDownloadQueue(operation, operation.getQueue());
                 if (delegate != null) {
                     delegate.fileDidFailedLoad(fileName, reason);
                 }
 
-                if (document != null && parentObject instanceof MessageObject && reason == 0) {
-                    getDownloadController().onDownloadFail((MessageObject) parentObject, reason);
-                } else if (reason == -1) {
+                if (reason == -1) {
                     LaunchActivity.checkFreeDiscSpaceStatic(2);
                 }
             }

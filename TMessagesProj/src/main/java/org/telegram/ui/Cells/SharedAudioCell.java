@@ -22,6 +22,7 @@ import android.widget.FrameLayout;
 
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.DownloadController;
+import org.telegram.messenger.DeviceMusicLibrary;
 import org.telegram.messenger.Emoji;
 import org.telegram.messenger.FileLoader;
 import org.telegram.messenger.FileLog;
@@ -284,6 +285,15 @@ public class SharedAudioCell extends FrameLayout implements DownloadController.F
             }
             if (cover != null) {
                 radialProgress.setImageOverlay(cover);
+            } else if (document != null && document.id == 0 && messageObject.getId() <= -2000000000
+                    && !TextUtils.isEmpty(messageObject.messageOwner.attachPath)) {
+                radialProgress.setImageOverlay(null, null, null);
+                DeviceMusicLibrary.getInstance().requestArtwork(messageObject.messageOwner.attachPath, bitmap -> {
+                    if (bitmap != null && currentMessageObject == messageObject) {
+                        radialProgress.setImageOverlay(bitmap);
+                        invalidate();
+                    }
+                });
             } else {
                 final String artworkUrl = messageObject.getArtworkUrl(true);
                 if (!TextUtils.isEmpty(artworkUrl)) {
@@ -838,7 +848,9 @@ public class SharedAudioCell extends FrameLayout implements DownloadController.F
             } else if (item.object instanceof MediaController.AudioEntry) {
                 final MediaController.AudioEntry audioEntry = (MediaController.AudioEntry) item.object;
                 cell.setTag(audioEntry);
-                cell.setMessageObject(audioEntry.messageObject, divider);
+                MessageObject message = audioEntry instanceof DeviceMusicLibrary.Entry
+                        ? ((DeviceMusicLibrary.Entry) audioEntry).resolveMessage() : audioEntry.messageObject;
+                cell.setMessageObject(message, divider);
             }
             if (item.object2 instanceof Utilities.CallbackReturn) {
                 cell.setNeedPlayMessageListener((Utilities.CallbackReturn<MessageObject, Boolean>) item.object2);

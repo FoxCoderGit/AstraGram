@@ -19,10 +19,14 @@ public final class GhostSafeScreenshot {
     public static boolean toggle(int account,long dialog,TLRPC.User peer){
         if(active(account,dialog)){disable(account,dialog);return false;}
         if(peer==null)return false;
-        TLRPC.User self=UserConfig.getInstance(account).getCurrentUser();
-        scopes.put(key(account,dialog),new String[]{self==null?null:UserObject.getUserName(self),self==null?null:self.first_name,self==null?null:self.last_name,
-                self==null||self.username==null?null:"@"+self.username,UserObject.getUserName(peer),peer.first_name,peer.last_name,peer.username==null?null:"@"+peer.username});
+        scopes.put(key(account,dialog), identities(account, peer));
         return true;
+    }
+    private static String[] identities(int account, TLRPC.User peer) {
+        TLRPC.User self=UserConfig.getInstance(account).getCurrentUser();
+        return new String[]{self==null?null:UserObject.getUserName(self),self==null?null:self.first_name,self==null?null:self.last_name,
+                self==null||self.username==null?null:"@"+self.username,peer==null?null:UserObject.getUserName(peer),
+                peer==null?null:peer.first_name,peer==null?null:peer.last_name,peer==null||peer.username==null?null:"@"+peer.username};
     }
     public static String alias(MessageObject m){return m!=null&&m.isOutOwner()?"я":"собеседник";}
     public static String redact(String text,String... identities){

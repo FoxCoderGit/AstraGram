@@ -14,9 +14,6 @@ import static org.telegram.messenger.LocaleController.getString;
 
 import android.annotation.SuppressLint;
 import android.content.Context;
-import android.database.Cursor;
-import android.graphics.Bitmap;
-import android.provider.MediaStore;
 import android.text.Editable;
 import android.text.TextUtils;
 import android.util.TypedValue;
@@ -27,18 +24,15 @@ import android.widget.LinearLayout;
 import android.widget.TextView;
 
 import org.telegram.messenger.AndroidUtilities;
-import org.telegram.messenger.ApplicationLoader;
-import org.telegram.messenger.FileLoader;
-import org.telegram.messenger.FileLog;
 import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.MediaController;
+import org.telegram.messenger.DeviceMusicLibrary;
 import org.telegram.messenger.MessageObject;
 import org.telegram.messenger.MessagesController;
 import org.telegram.messenger.NotificationCenter;
 import org.telegram.messenger.R;
 import org.telegram.messenger.UserConfig;
 import org.telegram.messenger.Utilities;
-import org.telegram.messenger.audioinfo.AudioInfo;
 import org.telegram.messenger.utils.TextWatcherImpl;
 import org.telegram.tgnet.ConnectionsManager;
 import org.telegram.tgnet.TLRPC;
@@ -51,9 +45,11 @@ import org.telegram.ui.Components.blur3.BlurredBackgroundDrawableViewFactory;
 import org.telegram.ui.Components.blur3.drawable.BlurredBackgroundDrawable;
 import org.telegram.ui.Components.blur3.drawable.color.impl.BlurredBackgroundProviderImpl;
 
-import java.io.File;
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Locale;
 
 import androidx.recyclerview.widget.RecyclerView;
 
@@ -81,7 +77,10 @@ public class ChatAttachAlertAudioLayout extends ChatAttachAlert.AttachAlertLayou
 
     private boolean loadingAudio;
 
-    private ArrayList<MediaController.AudioEntry> audioEntries = new ArrayList<>();
+    private List<DeviceMusicLibrary.Track> deviceTracks = java.util.Collections.emptyList();
+    private final HashMap<DeviceMusicLibrary.Track, DeviceMusicLibrary.Entry> deviceEntries = new HashMap<>();
+    private final DeviceMusicLibrary.Listener deviceMusicListener = this::onDeviceMusic;
+    private int nextDeviceMessageId = -2000000000;
     private final HashSet<MediaController.AudioEntry> selectedAudios = new HashSet<>();
 
     private MessagesController.SavedMusicList savedMusicList;
@@ -105,7 +104,6 @@ public class ChatAttachAlertAudioLayout extends ChatAttachAlert.AttachAlertLayou
         NotificationCenter.getInstance(parentAlert.currentAccount).addWeakObserver(this, NotificationCenter.messagePlayingDidStart);
         NotificationCenter.getInstance(parentAlert.currentAccount).addWeakObserver(this, NotificationCenter.messagePlayingPlayStateChanged);
         NotificationCenter.getInstance(parentAlert.currentAccount).addWeakObserver(this, NotificationCenter.musicListLoaded);
-        loadAudio();
 
         fadeView = new ChatAttachAlert.SearchFadeView(context, Theme.key_windowBackgroundWhite, resourcesProvider);
         fadeView.setVisibility(INVISIBLE);
@@ -275,9 +273,9 @@ public class ChatAttachAlertAudioLayout extends ChatAttachAlert.AttachAlertLayou
         int firstIndex = items.size();
         if (TextUtils.isEmpty(query)) {
             adapter.whiteSectionStart();
-            for (int i = 0; i < audioEntries.size(); ++i) {
-                final MediaController.AudioEntry audioEntry = audioEntries.get(i);
-                audioEntry.messageObject.setQuery(null);
+            for (DeviceMusicLibrary.Track track : deviceTracks) {
+                DeviceMusicLibrary.Entry audioEntry = getDeviceEntry(track);
+                audioEntry.setSearchQuery(null);
                 items.add(
                     SharedAudioCell.Factory.as(audioEntry, this::needPlayMessage)
                         .setChecked(selectedAudios.contains(audioEntry))
@@ -342,26 +340,12 @@ public class ChatAttachAlertAudioLayout extends ChatAttachAlert.AttachAlertLayou
                 adapter.whiteSectionEnd();
             }
         } else {
-            final String q = query.toLowerCase();
+            final String q = query.toLowerCase(Locale.ROOT);
             final String tq = AndroidUtilities.translitSafe(q);
-
             boolean addedHeader = false;
-            for (int i = 0; i < audioEntries.size(); ++i) {
-                final MediaController.AudioEntry audioEntry = audioEntries.get(i);
-
-                boolean matches = false;
-                if (audioEntry.author != null) {
-                    final String a = audioEntry.author.toLowerCase();
-                    final String ta = AndroidUtilities.translitSafe(a);
-                    matches = matches || a.startsWith(q) || a.contains(" " + q) || ta.startsWith(tq) || ta.contains(" " + tq);
-                }
-                if (audioEntry.title != null) {
-                    final String t =  audioEntry.title.toLowerCase();
-                    final String tt = AndroidUtilities.translitSafe(t);
-                    matches = matches || t.startsWith(q) || t.contains(" " + q) || tt.startsWith(tq) || tt.contains(" " + tq);
-                }
-
-                if (matches) {
+            for (DeviceMusicLibrary.Track track : deviceTracks) {
+                if (track.matches(q, tq)) {
+                    DeviceMusicLibrary.Entry audioEntry = getDeviceEntry(track);
                     if (!addedHeader) {
                         if (items.size() > firstIndex) {
                             items.add(UItem.asShadow(-97, null));
@@ -370,7 +354,7 @@ public class ChatAttachAlertAudioLayout extends ChatAttachAlert.AttachAlertLayou
                         items.add(UItem.asHeader(10, getString(R.string.AudioSearchLocal)));
                         addedHeader = true;
                     }
-                    audioEntry.messageObject.setQuery(query);
+                    audioEntry.setSearchQuery(query);
                     items.add(
                         SharedAudioCell.Factory.as(audioEntry, this::needPlayMessage)
                             .setChecked(selectedAudios.contains(audioEntry))
@@ -536,6 +520,7 @@ public class ChatAttachAlertAudioLayout extends ChatAttachAlert.AttachAlertLayou
 
     @Override
     public void onHide() {
+        DeviceMusicLibrary.getInstance().unsubscribe(deviceMusicListener);
         if (playingAudio != null && MediaController.getInstance().isPlayingMessage(playingAudio)) {
             MediaController.getInstance().cleanupPlayer(true, true);
         }
@@ -620,6 +605,7 @@ public class ChatAttachAlertAudioLayout extends ChatAttachAlert.AttachAlertLayou
 
     @Override
     public void onShow(ChatAttachAlert.AttachAlertLayout previousLayout) {
+        DeviceMusicLibrary.getInstance().subscribe(deviceMusicListener);
         searchChats();
         savedMusicList.load();
 
@@ -710,93 +696,28 @@ public class ChatAttachAlertAudioLayout extends ChatAttachAlert.AttachAlertLayou
         delegate = audioSelectDelegate;
     }
 
-    private void loadAudio() {
-        loadingAudio = true;
-        Utilities.globalQueue.postRunnable(() -> {
-            String[] projection = {
-                    MediaStore.Audio.Media._ID,
-                    MediaStore.Audio.Media.ARTIST,
-                    MediaStore.Audio.Media.TITLE,
-                    MediaStore.Audio.Media.DATA,
-                    MediaStore.Audio.Media.DURATION,
-                    MediaStore.Audio.Media.ALBUM
-            };
+    private DeviceMusicLibrary.Entry getDeviceEntry(DeviceMusicLibrary.Track track) {
+        DeviceMusicLibrary.Entry entry = deviceEntries.get(track);
+        if (entry == null) {
+            entry = track.createEntry(parentAlert.currentAccount, nextDeviceMessageId--);
+            deviceEntries.put(track, entry);
+        }
+        return entry;
+    }
 
-            final ArrayList<MediaController.AudioEntry> newAudioEntries = new ArrayList<>();
-            try (Cursor cursor = ApplicationLoader.applicationContext.getContentResolver().query(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, projection, MediaStore.Audio.Media.IS_MUSIC + " != 0", null, MediaStore.Audio.Media.TITLE)) {
-                int id = -2000000000;
-                while (cursor.moveToNext()) {
-                    final MediaController.AudioEntry audioEntry = new MediaController.AudioEntry();
-                    audioEntry.id = cursor.getInt(0);
-                    audioEntry.author = cursor.getString(1);
-                    audioEntry.title = cursor.getString(2);
-                    audioEntry.path = cursor.getString(3);
-                    audioEntry.duration = (int) (cursor.getLong(4) / 1000);
-                    audioEntry.genre = cursor.getString(5);
-
-                    final File file = new File(audioEntry.path);
-
-                    final TLRPC.TL_message message = new TLRPC.TL_message();
-                    message.out = true;
-                    message.id = id;
-                    message.peer_id = new TLRPC.TL_peerUser();
-                    message.from_id = new TLRPC.TL_peerUser();
-                    message.peer_id.user_id = message.from_id.user_id = UserConfig.getInstance(parentAlert.currentAccount).getClientUserId();
-                    message.date = (int) (System.currentTimeMillis() / 1000);
-                    message.message = "";
-                    message.attachPath = audioEntry.path;
-                    message.media = new TLRPC.TL_messageMediaDocument();
-                    message.media.flags |= 3;
-                    message.media.document = new TLRPC.TL_document();
-                    message.flags |= TLRPC.MESSAGE_FLAG_HAS_MEDIA | TLRPC.MESSAGE_FLAG_HAS_FROM_ID;
-
-                    final String ext = FileLoader.getFileExtension(file);
-
-                    message.media.document.id = 0;
-                    message.media.document.access_hash = 0;
-                    message.media.document.file_reference = new byte[0];
-                    message.media.document.date = message.date;
-                    message.media.document.mime_type = "audio/" + (ext.length() > 0 ? ext : "mp3");
-                    message.media.document.size = (int) file.length();
-                    message.media.document.dc_id = 0;
-
-                    final TLRPC.TL_documentAttributeAudio attributeAudio = new TLRPC.TL_documentAttributeAudio();
-                    attributeAudio.duration = audioEntry.duration;
-                    attributeAudio.title = audioEntry.title;
-                    attributeAudio.performer = audioEntry.author;
-                    attributeAudio.flags |= 3;
-                    message.media.document.attributes.add(attributeAudio);
-
-                    final TLRPC.TL_documentAttributeFilename fileName = new TLRPC.TL_documentAttributeFilename();
-                    fileName.file_name = file.getName();
-                    message.media.document.attributes.add(fileName);
-
-                    audioEntry.messageObject = new MessageObject(parentAlert.currentAccount, message, false, true);
-
-                    final AudioInfo info = AudioInfo.getAudioInfo(file);
-                    if (info != null && info.getCover() != null) {
-                        final int size = dp(44);
-                        final Bitmap bitmap = info.getCover();
-                        if (bitmap.getWidth() > size || bitmap.getHeight() > size) {
-                            final float scale = Math.min((float) size / bitmap.getWidth(), (float) size / bitmap.getHeight());
-                            audioEntry.messageObject.audioCover = Bitmap.createScaledBitmap(bitmap, (int) (bitmap.getWidth() * scale), (int) (bitmap.getHeight() * scale), true);
-                        } else {
-                            audioEntry.messageObject.audioCover = bitmap;
-                        }
-                    }
-
-                    newAudioEntries.add(audioEntry);
-                    id--;
-                }
-            } catch (Exception e) {
-                FileLog.e(e);
-            }
-            AndroidUtilities.runOnUIThread(() -> {
-                loadingAudio = false;
-                audioEntries = newAudioEntries;
-                updateWithSavingScroll();
+    private void onDeviceMusic(List<DeviceMusicLibrary.Track> tracks, boolean loading) {
+        if (deviceTracks != tracks) {
+            HashSet<DeviceMusicLibrary.Track> remaining = new HashSet<>(tracks);
+            deviceEntries.entrySet().removeIf(entry -> {
+                if (remaining.contains(entry.getKey())) return false;
+                selectedAudios.remove(entry.getValue());
+                return true;
             });
-        });
+            deviceTracks = tracks;
+            parentAlert.updateCountButton(0);
+        }
+        loadingAudio = loading;
+        updateWithSavingScroll();
     }
 
     private int searchChatsRequestId = -1;

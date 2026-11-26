@@ -2878,6 +2878,10 @@ public class ChatActivityEnterView extends FrameLayout implements
                 }
                 delegate.didPressAttachButton();
             });
+            attachButton.setOnLongClickListener(v -> parentFragment != null && parentFragment.getChatActivityEnterView() == this
+                    && attachLayoutPaddingAlpha != 0f
+                    && (adjustPanLayoutHelper == null || !adjustPanLayoutHelper.animationInProgress())
+                    && parentFragment.openAstraRecentPhotos());
             attachButton.setContentDescription(getString(R.string.AccDescrAttachButton));
             updateFieldRight(1);
         }

@@ -24,7 +24,7 @@ public final class GhostSessions {
         try{
             SerializedData data=new SerializedData(e.user);TLRPC.User user=TLRPC.User.TLdeserialize(data,data.readInt32(true),true);
             if(user==null||user.bot||user.deleted||user.id!=e.id||data.remaining()!=0)throw new IOException("Account metadata");
-            if(GhostAuthSnapshot.validate(e.auth)!=user.id||GhostAuthSnapshot.apiId(e.auth)!=BuildVars.APP_ID)throw new IOException("API configuration");
+            if(GhostAuthSnapshot.validate(e.auth)!=user.id)throw new IOException("Account identity mismatch");
             return user;
         }catch(RuntimeException error){throw new IOException("Invalid account metadata");}
     }

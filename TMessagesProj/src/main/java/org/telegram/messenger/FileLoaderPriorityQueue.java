@@ -47,6 +47,16 @@ public class FileLoaderPriorityQueue {
                 i--;
             }
         }
+        if (operation.getPriority() == PRIORITY_VALUE_MAX - 1) {
+            // Run after already active requests, ahead of the remaining queue.
+            int next = 0;
+            for (int i = 0; i < allOperations.size(); i++) {
+                FileLoadOperation existing = allOperations.get(i);
+                if (existing.wasStarted() || existing.getPriority() >= PRIORITY_VALUE_MAX) next = i + 1;
+            }
+            allOperations.add(next, operation);
+            return;
+        }
         for (int i = 0; i < allOperations.size(); i++) {
             if (operation.getPriority() > allOperations.get(i).getPriority()) {
                 index = i;

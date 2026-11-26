@@ -138,6 +138,8 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
     private Paint paint;
     private RectF rect;
     private final FlashViews.ImageViewInvertable switchCameraButton;
+    private android.widget.TextView wideLensButton, mainLensButton;
+    private Camera2Session lensSession;
     private final FlashViews.ImageViewInvertable flashButton;
     private final FlashViews flashViews;
     private RLottieDrawable flashOnDrawable, flashOffDrawable;
@@ -357,6 +359,8 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
             flashing = !flashing;
             updateFlash();
         });
+        wideLensButton = addLensButton(context, "0,5×", 0.5f);
+        mainLensButton = addLensButton(context, "1×", 1f);
         updateFlash();
 
         if (!isNewDesign) {
@@ -409,7 +413,49 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
     private Boolean wasFlashing;
     private boolean flashing;
     private boolean frontFlashing;
+    private android.widget.TextView addLensButton(Context context, String label, float ratio) {
+        android.widget.TextView button = new android.widget.TextView(context);
+        button.setText(label);
+        button.setTextColor(0xFFFFFFFF);
+        button.setGravity(Gravity.CENTER);
+        button.setTextSize(12);
+        button.setTypeface(AndroidUtilities.bold());
+        button.setBackground(Theme.createSelectorDrawable(0x55FFFFFF));
+        button.setVisibility(GONE);
+        button.setOnClickListener(v -> {
+            if (cameraReady && lensSession != null && lensSession == camera2SessionCurrent && !isFrontface) {
+                RoundVideoSettings.setPreferredLens(ratio);
+                lensSession.setZoom(ratio);
+                updateLensButtons();
+            }
+        });
+        buttonsLayout.addView(button, LayoutHelper.createLinear(38, 44));
+        return button;
+    }
+
+    private void updateLensButtons() {
+        if (wideLensButton == null || mainLensButton == null) return;
+        Camera2Session active = camera2SessionCurrent;
+        if (!cameraReady || isFrontface || active == null || !active.isInitiated() || active.getMinZoom() > 0.5f
+                || !RoundVideoSettings.isWideAngleZoomAllowed()) {
+            wideLensButton.setVisibility(GONE);
+            mainLensButton.setVisibility(GONE);
+            lensSession = null;
+            return;
+        }
+        float ratio = RoundVideoSettings.getPreferredLens();
+        if (lensSession != active) {
+            lensSession = active;
+            active.setZoom(ratio);
+        }
+        wideLensButton.setVisibility(VISIBLE);
+        mainLensButton.setVisibility(VISIBLE);
+        wideLensButton.setAlpha(ratio < 1f ? 1f : 0.65f);
+        mainLensButton.setAlpha(ratio == 1f ? 1f : 0.65f);
+    }
+
     private void updateFlash() {
+        updateLensButtons();
         final boolean shouldFrontFlash = flashing && recording && isFrontface;
         if (frontFlashing != shouldFrontFlash) {
             if (frontFlashing = shouldFrontFlash) {
@@ -1857,7 +1903,11 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
                 if (videoEncoder.started) {
                     if (!cameraReady) {
                         cameraReady = true;
-                        AndroidUtilities.runOnUIThread(() -> textureOverlayView.animate().setDuration(120).alpha(0.0f).setInterpolator(new DecelerateInterpolator()).start());
+                        AndroidUtilities.runOnUIThread(() -> {
+                            updateLensButtons();
+                            textureOverlayView.animate().setDuration(120).alpha(0.0f)
+                                    .setInterpolator(new DecelerateInterpolator()).start();
+                        });
                     }
                 } else {
                     captureFirstFrameThumb = true;
@@ -2761,12 +2811,20 @@ public class InstantCameraView extends InstantCameraViewBase implements Notifica
                     oldCameraTexture[0] = 0;
                     if (!cameraReady) {
                         cameraReady = true;
-                        AndroidUtilities.runOnUIThread(() -> textureOverlayView.animate().setDuration(120).alpha(0.0f).setInterpolator(new DecelerateInterpolator()).start());
+                        AndroidUtilities.runOnUIThread(() -> {
+                            updateLensButtons();
+                            textureOverlayView.animate().setDuration(120).alpha(0.0f)
+                                    .setInterpolator(new DecelerateInterpolator()).start();
+                        });
                     }
                 }
             } else if (!cameraReady) {
                 cameraReady = true;
-                AndroidUtilities.runOnUIThread(() -> textureOverlayView.animate().setDuration(120).alpha(0.0f).setInterpolator(new DecelerateInterpolator()).start());
+                AndroidUtilities.runOnUIThread(() -> {
+                            updateLensButtons();
+                            textureOverlayView.animate().setDuration(120).alpha(0.0f)
+                                    .setInterpolator(new DecelerateInterpolator()).start();
+                        });
             }
         }
 

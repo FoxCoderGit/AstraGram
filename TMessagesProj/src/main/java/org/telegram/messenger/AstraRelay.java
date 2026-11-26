@@ -6,7 +6,6 @@ import android.content.ComponentName;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.net.ConnectivityManager;
-import android.net.LinkProperties;
 import android.net.Network;
 import android.net.NetworkCapabilities;
 import android.net.NetworkRequest;
@@ -39,6 +38,7 @@ import javax.net.ssl.HttpsURLConnection;
 public final class AstraRelay {
     private static final long DAY=86400000L,HOUR=3600000L;
     private static final long COUNTRY_CACHE_MS = 15 * 60 * 1000L;
+    private static final long COUNTRY_RETRY_MS = 5 * 60 * 1000L;
     private static final String CONTROL="https://vpn.codebyfox.ru:9446";
     private static final DispatchQueue queue=new DispatchQueue("AstraRelayPolicy");
     private static final AtomicInteger denialSequence=new AtomicInteger();
@@ -47,12 +47,13 @@ public final class AstraRelay {
     private static long countryUntil;
     private static int countryGeneration = -1;
     private static String country="";
-    private static RelayNetwork relayNetwork = new RelayNetwork(null, false, "");
+    private static RelayNetwork relayNetwork = new RelayNetwork(null, false);
     private static String lastDiagnostic="";
     private static Context context;
     private static SharedPreferences prefs;
     private static PublicKey policyKey;
     private static volatile boolean initialized;
+    private static volatile boolean userEnabled = true;
     private static volatile long serverOffsetMs;
     private static int permission;
     private static long accessDeadline,tokenDeadline,retryDeadline,deniedDeadline;
@@ -71,16 +72,13 @@ public final class AstraRelay {
     private static final class RelayNetwork {
         final Network network;
         final boolean vpn;
-        final String addresses;
-
-        RelayNetwork(Network network, boolean vpn, String addresses) {
+        RelayNetwork(Network network, boolean vpn) {
             this.network = network;
             this.vpn = vpn;
-            this.addresses = addresses;
         }
 
         boolean sameAs(RelayNetwork other) {
-            return Objects.equals(network, other.network) && vpn == other.vpn && addresses.equals(other.addresses);
+            return Objects.equals(network, other.network) && vpn == other.vpn;
         }
     }
 
@@ -92,6 +90,7 @@ public final class AstraRelay {
     public static synchronized void initialize(Context application) {
         if(initialized)return;
         context=application.getApplicationContext();prefs=context.getSharedPreferences("astra_relay",Context.MODE_PRIVATE);
+        userEnabled = prefs.getBoolean("user_enabled", true);
         initialized=true;
         // Install the native gate before Telegram starts any connection.
         installNativeGate(application);
@@ -111,7 +110,6 @@ public final class AstraRelay {
                 @Override public void onAvailable(Network network){scheduleNetworkCheck();}
                 @Override public void onLost(Network network){scheduleNetworkCheck();}
                 @Override public void onCapabilitiesChanged(Network network,NetworkCapabilities capabilities){scheduleNetworkCheck();}
-                @Override public void onLinkPropertiesChanged(Network network,LinkProperties properties){scheduleNetworkCheck();}
             };
             manager.registerDefaultNetworkCallback(callback);
             manager.registerNetworkCallback(new NetworkRequest.Builder()
@@ -134,18 +132,12 @@ public final class AstraRelay {
         try {
             ConnectivityManager manager = context.getSystemService(ConnectivityManager.class);
             Network network = manager.getActiveNetwork();
-            LinkProperties links = network == null ? null : manager.getLinkProperties(network);
             NetworkCapabilities capabilities = network == null ? null : manager.getNetworkCapabilities(network);
             boolean vpn = (capabilities != null && capabilities.hasTransport(NetworkCapabilities.TRANSPORT_VPN))
                     || GhostNetworkEnvironment.vpnActive(context);
-            ArrayList<String> addresses = new ArrayList<>();
-            if (links != null) {
-                for (android.net.LinkAddress address : links.getLinkAddresses()) addresses.add(address.toString());
-                java.util.Collections.sort(addresses);
-            }
-            observed = new RelayNetwork(network, vpn, addresses.toString());
+            observed = new RelayNetwork(network, vpn);
         } catch (Exception ignored) {
-            observed = new RelayNetwork(null, false, "");
+            observed = new RelayNetwork(null, false);
         }
         if (observed.sameAs(relayNetwork)) return false;
         relayNetwork = observed;
@@ -167,6 +159,20 @@ public final class AstraRelay {
             if(permission==0&&endpoint==null){try{restore();applyNative();}catch(Throwable ignored){}}
             refresh(true);
         });
+    }
+
+    public static boolean isUserEnabled() {
+        return userEnabled;
+    }
+
+    public static synchronized void setUserEnabled(boolean enabled) {
+        if (!initialized || enabled == userEnabled) return;
+        userEnabled = enabled;
+        prefs.edit().putBoolean("user_enabled", enabled).apply();
+        networkGeneration.incrementAndGet();
+        nativeSetRelayEligible(false);
+        queue.cancelRunnable(wakeTask);
+        queue.postRunnable(refreshNetwork);
     }
 
     public static void wake(Runnable finished){
@@ -223,8 +229,15 @@ public final class AstraRelay {
 
     private static void refresh(boolean force){
         long now=SystemClock.elapsedRealtime();
-        if(busy||!networkAvailable()){schedule();return;}
-        if(!updateEligibility()){scheduleAfter(60000);return;}
+        if (!userEnabled) { diagnostic("direct: relay disabled"); return; }
+        if(busy||!networkAvailable()){return;}
+        if(!updateEligibility()){
+            synchronized (AstraRelay.class) {
+                if (!userEnabled || relayNetwork.network == null || relayNetwork.vpn) return;
+            }
+            scheduleAfter(Math.max(1000, countryUntil - now));
+            return;
+        }
         if(deniedDeadline>now){diagnostic("direct: administrative denial");permission=2;applyNative();schedule();return;}
         if(!force&&retryDeadline>now){diagnostic("direct: technical cooldown");schedule();return;}
         if(!force&&permission==1&&Math.min(accessDeadline,tokenDeadline)-now>60000){schedule();return;}
@@ -279,7 +292,7 @@ public final class AstraRelay {
             snapshot = relayNetwork;
             generation = networkGeneration.get();
         }
-        if (snapshot.network == null || snapshot.vpn) {
+        if (!userEnabled || snapshot.network == null || snapshot.vpn) {
             diagnostic(snapshot.vpn ? "direct: VPN" : "direct: no default network");
             return false;
         }
@@ -306,11 +319,11 @@ public final class AstraRelay {
 
         synchronized (AstraRelay.class) {
             if (observeNetwork()) queue.postRunnable(refreshNetwork);
-            if (generation != networkGeneration.get()) return false;
+            if (!userEnabled || generation != networkGeneration.get()) return false;
             if (!cached) {
                 country = confirmedCountry;
                 countryGeneration = generation;
-                countryUntil = confirmedCountry.isEmpty() ? 0 : SystemClock.elapsedRealtime() + COUNTRY_CACHE_MS;
+                countryUntil = SystemClock.elapsedRealtime() + (confirmedCountry.isEmpty() ? COUNTRY_RETRY_MS : COUNTRY_CACHE_MS);
             }
             boolean eligible = "RU".equals(confirmedCountry);
             nativeSetRelayEligible(eligible);
@@ -380,6 +393,29 @@ public final class AstraRelay {
         if(resolved.length()==0)throw new SecurityException("Public relay DNS required");
         return new JSONObject(value.toString()).put("ips",resolved);
     }
+    /** Measures HTTPS reachability of the relay health endpoint without opening a tunnel. */
+    public static String checkReachability() {
+        HttpsURLConnection connection = null;
+        long started = SystemClock.elapsedRealtime();
+        try {
+            connection = (HttpsURLConnection) new URL(CONTROL + "/healthz").openConnection(Proxy.NO_PROXY);
+            connection.setConnectTimeout(5000);
+            connection.setReadTimeout(5000);
+            connection.setInstanceFollowRedirects(false);
+            connection.setUseCaches(false);
+            int status = connection.getResponseCode();
+            return status == 200
+                    ? "доступен · " + (SystemClock.elapsedRealtime() - started) + " мс"
+                    : "ошибка HTTP " + status;
+        } catch (java.net.SocketTimeoutException error) {
+            return "таймаут · " + (SystemClock.elapsedRealtime() - started) + " мс";
+        } catch (Exception error) {
+            return "недоступен";
+        } finally {
+            if (connection != null) connection.disconnect();
+        }
+    }
+
     private static JSONObject post(String path,JSONObject value)throws Exception{
         HttpsURLConnection connection=(HttpsURLConnection)new URL(CONTROL+path).openConnection();
         connection.setConnectTimeout(8000);connection.setReadTimeout(8000);connection.setInstanceFollowRedirects(false);
@@ -414,7 +450,7 @@ public final class AstraRelay {
         else if(retryDeadline>now)delay=retryDeadline-now;
         else if(permission==1&&Math.min(accessDeadline,tokenDeadline)>now)delay=Math.max(10000,Math.min(accessDeadline,tokenDeadline)-now-30000);
         else delay=30000;
-        scheduleAfter(Math.min(delay,60000));
+        scheduleAfter(Math.min(delay, Math.max(1000, countryUntil - now)));
     }
     private static void scheduleAfter(long delay){
         delay=Math.max(1000,Math.min(DAY,delay));queue.cancelRunnable(wakeTask);queue.postRunnable(wakeTask,delay);

@@ -13,7 +13,9 @@
 - Android package: `org.ghostgram.messenger` - retained to support updates over earlier installed builds without deleting local application data.
 - Published APKs: [GitHub Releases](https://github.com/FoxCoderGit/AstraGram/releases/latest)
 
-Source version 150 updates the plugin installer and SDK compatibility. See [CHANGELOG.md](CHANGELOG.md) for earlier releases.
+Version 150 updates plugins, downloads, device music indexing, cloud album selection, chat export and settings backups. See [CHANGELOG.md](CHANGELOG.md).
+
+The public source uses developer-supplied Telegram API credentials in an ignored local build file. The distributed APK uses server-provided credentials. The public checkout represents the local-credential build variant.
 
 ## AstraGram additions
 

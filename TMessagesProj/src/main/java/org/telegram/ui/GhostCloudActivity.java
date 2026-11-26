@@ -6,10 +6,15 @@ import android.app.TimePickerDialog;
 import android.content.Context;
 import android.os.Build;
 import android.os.Bundle;
+import android.text.Editable;
+import android.text.TextWatcher;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.LinearLayout;
+import android.widget.BaseAdapter;
+import android.widget.EditText;
+import android.widget.ListView;
 import android.widget.ProgressBar;
 import android.widget.ScrollView;
 import android.widget.TextView;
@@ -26,7 +31,8 @@ import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.Date;
-import java.util.LinkedHashMap;
+import java.util.HashSet;
+import java.util.HashMap;
 import java.util.Locale;
 import java.util.function.Consumer;
 
@@ -161,6 +167,7 @@ public final class GhostCloudActivity extends BaseFragment implements Notificati
         final GhostCloudStore.Config config=cloud.store.config();
         final TextView folders,period,window;
         final TextCheckCell scheduleCell;
+        boolean loadingAlbums;
         SettingsSheet(Context context) {
             super(context,true,getResourceProvider());setTitle("Настройки облака",true);
             LinearLayout content=new LinearLayout(context);content.setOrientation(LinearLayout.VERTICAL);
@@ -200,13 +207,106 @@ public final class GhostCloudActivity extends BaseFragment implements Notificati
             else{if(index==0&&config.period!=0)config.since=System.currentTimeMillis();config.period=index;labels();}
         }).show();}
         void chooseFolders(){
-            ArrayList<GhostCloudMedia.Source> sources=GhostCloudMedia.query();LinkedHashMap<String,String> albums=GhostCloudMedia.folders(sources);
-            LinearLayout content=new LinearLayout(getContext());content.setOrientation(LinearLayout.VERTICAL);
-            check(content,"Камера",config.camera,value->{config.camera=value;labels();});
-            java.util.HashSet<String> cameraFolders=new java.util.HashSet<>();for(GhostCloudMedia.Source source:sources)if(source.camera)cameraFolders.add(source.folder);
-            for(java.util.Map.Entry<String,String> album:albums.entrySet())if(!cameraFolders.contains(album.getKey()))check(content,album.getValue(),config.folders.contains(album.getKey()),value->{if(value)config.folders.add(album.getKey());else config.folders.remove(album.getKey());});
-            ScrollView list=new ScrollView(getContext());list.addView(content);
-            new AlertDialog.Builder(getContext(),getResourceProvider()).setTitle("Папки с фотографиями").setView(list).setPositiveButton(LocaleController.getString(R.string.OK),(d,w)->labels()).show();
+            if (loadingAlbums) return;
+            loadingAlbums = true;
+            boolean includeVideo = config.video;
+            Utilities.globalQueue.postRunnable(() -> {
+                ArrayList<Album> albums = null;
+                try {
+                    HashMap<String, Album> grouped = new HashMap<>();
+                    for (GhostCloudMedia.Source source : GhostCloudMedia.query()) {
+                        if (source.video && !includeVideo) continue;
+                        Album album = grouped.computeIfAbsent(source.folder, ignored -> new Album(source));
+                        album.count++;
+                        album.recent = Math.max(album.recent, source.added);
+                    }
+                    albums = new ArrayList<>(grouped.values());
+                    albums.sort((a, b) -> Long.compare(b.recent, a.recent));
+                } catch (RuntimeException error) {
+                    FileLog.e(error);
+                }
+                ArrayList<Album> result = albums;
+                AndroidUtilities.runOnUIThread(() -> {
+                    loadingAlbums = false;
+                    if (!isShowing() || getParentActivity() == null) return;
+                    if (result != null) showAlbums(result);
+                    else new AlertDialog.Builder(getContext(), getResourceProvider()).setTitle("Не удалось прочитать альбомы")
+                            .setPositiveButton(LocaleController.getString(R.string.OK), null).show();
+                });
+            });
+        }
+        void showAlbums(ArrayList<Album> albums) {
+            Context context = getContext();
+            HashSet<String> selected = new HashSet<>(config.folders);
+            LinearLayout content = new LinearLayout(context);
+            content.setOrientation(LinearLayout.VERTICAL);
+            EditText search = new EditText(context);
+            search.setSingleLine();
+            search.setHint("Название или путь к альбому");
+            search.setTextColor(getThemedColor(Theme.key_dialogTextBlack));
+            search.setHintTextColor(getThemedColor(Theme.key_dialogTextHint));
+            search.setBackground(Theme.createEditTextDrawable(context, true));
+            content.addView(search, LayoutHelper.createLinear(-1, 48, 20, 0, 20, 6));
+            TextCheckCell camera = check(content, "Камера", config.camera, ignored -> {});
+            TextCheckCell showAll = check(content, "Показать все альбомы", false, ignored -> {});
+            ListView list = new ListView(context);
+            list.setDivider(null);
+            TextView empty = label(context, "Альбомы не найдены", 15, Theme.key_dialogTextGray);
+            empty.setGravity(Gravity.CENTER);
+            android.widget.FrameLayout results = new android.widget.FrameLayout(context);
+            results.addView(list, LayoutHelper.createFrame(-1, -1));
+            results.addView(empty, LayoutHelper.createFrame(-1, -1));
+            content.addView(results, LayoutHelper.createLinear(-1, 300));
+            ArrayList<Album> visible = new ArrayList<>();
+            BaseAdapter adapter = new BaseAdapter() {
+                public int getCount() { return visible.size(); }
+                public Album getItem(int position) { return visible.get(position); }
+                public long getItemId(int position) { return position; }
+                public View getView(int position, View recycled, ViewGroup parent) {
+                    TextCheckCell cell = recycled instanceof TextCheckCell ? (TextCheckCell) recycled : new TextCheckCell(context, getResourceProvider());
+                    Album album = getItem(position);
+                    cell.setTextAndValueAndCheck(album.name, album.path + " · " + album.count, selected.contains(album.id), true, false);
+                    cell.setOnClickListener(view -> {
+                        if (!selected.remove(album.id)) selected.add(album.id);
+                        cell.setChecked(selected.contains(album.id));
+                    });
+                    return cell;
+                }
+            };
+            list.setAdapter(adapter);
+            Runnable filter = () -> {
+                String term = search.getText().toString().trim().toLowerCase(Locale.ROOT);
+                visible.clear();
+                int suggestions = 0;
+                for (Album album : albums) {
+                    if (album.camera && !selected.contains(album.id)) continue;
+                    if (!term.isEmpty() ? album.searchable.contains(term) : showAll.isChecked() || selected.contains(album.id)) {
+                        visible.add(album);
+                    } else if (term.isEmpty() && album.common && suggestions < 20) {
+                        visible.add(album);
+                        suggestions++;
+                    }
+                }
+                if (term.isEmpty() && !showAll.isChecked()) {
+                    visible.sort((a, b) -> Boolean.compare(selected.contains(b.id), selected.contains(a.id)));
+                }
+                adapter.notifyDataSetChanged();
+                empty.setVisibility(visible.isEmpty() ? View.VISIBLE : View.GONE);
+            };
+            showAll.setOnClickListener(view -> { showAll.setChecked(!showAll.isChecked()); filter.run(); });
+            search.addTextChangedListener(new TextWatcher() {
+                public void beforeTextChanged(CharSequence value, int start, int count, int after) {}
+                public void onTextChanged(CharSequence value, int start, int before, int count) { filter.run(); }
+                public void afterTextChanged(Editable value) {}
+            });
+            filter.run();
+            new AlertDialog.Builder(context, getResourceProvider()).setTitle("Альбомы для облака").setView(content)
+                    .setPositiveButton("Применить", (d, w) -> {
+                        config.camera = camera.isChecked();
+                        config.folders.clear();
+                        config.folders.addAll(selected);
+                        labels();
+                    }).setNegativeButton(LocaleController.getString(R.string.Cancel), null).show();
         }
         void chooseDays(){
             LinearLayout content=new LinearLayout(getContext());content.setOrientation(LinearLayout.VERTICAL);
@@ -215,6 +315,24 @@ public final class GhostCloudActivity extends BaseFragment implements Notificati
             new AlertDialog.Builder(getContext(),getResourceProvider()).setTitle("Дни начала загрузки").setView(content).setPositiveButton("Время",(d,w)->{
                 new TimePickerDialog(getContext(),(v,h,m)->{config.start=h*60+m;new TimePickerDialog(getContext(),(view,hh,mm)->{config.end=hh*60+mm;config.scheduled=true;scheduleCell.setChecked(true);labels();},config.end/60,config.end%60,true).show();},config.start/60,config.start%60,true).show();
             }).setNegativeButton(LocaleController.getString(R.string.Cancel),(d,w)->labels()).show();
+        }
+    }
+
+    private static final class Album {
+        final String id, name, path, searchable;
+        final boolean camera, common;
+        long recent;
+        int count;
+
+        Album(GhostCloudMedia.Source source) {
+            id = source.folder;
+            path = source.path == null ? "" : source.path;
+            name = source.title == null || source.title.isEmpty() ? (path.isEmpty() ? "Альбом" : path) : source.title;
+            camera = source.camera;
+            searchable = (name + " " + path).toLowerCase(Locale.ROOT);
+            String directory = "/" + path.toLowerCase(Locale.ROOT);
+            common = !directory.contains("/android/") && (directory.contains("/dcim/")
+                    || directory.contains("/pictures/") || directory.contains("/download/"));
         }
     }
 }

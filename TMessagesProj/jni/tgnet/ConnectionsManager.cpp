@@ -686,7 +686,7 @@ std::vector<uint8_t> ConnectionsManager::exportSessionAuth(){
 
 bool ConnectionsManager::installSessionAuth(const std::vector<uint8_t>& bytes){
     auto data=std::make_shared<ghostsession::Data>();
-    if(!isSessionDisabled()||!ghostsession::decode(bytes.data(),bytes.size(),*data)||data->apiId!=currentApiId)return false;
+    if(!isSessionDisabled()||!ghostsession::decode(bytes.data(),bytes.size(),*data))return false;
     auto promise=std::make_shared<std::promise<bool>>();auto future=promise->get_future();
     scheduleTask([this,data,promise]{
         if(!isSessionDisabled()||currentUserId!=0){promise->set_value(false);return;}

@@ -6694,22 +6694,31 @@ public class ChatAttachAlert extends BottomSheet implements NotificationCenter.N
     private class ButtonsAdapter extends RecyclerListView.SelectionAdapter {
         private final ArrayList<Integer> ghostDisplayOrder = new ArrayList<>();
         private int logicalPosition(int position) { return position>=0&&position<ghostDisplayOrder.size()?ghostDisplayOrder.get(position):position; }
+        @Nullable
         private String attachmentId(int logical) {
             if(logical>=attachBotsStartRow && logical<attachBotsEndRow) return "bot:"+attachMenuBots.get(logical-attachBotsStartRow).bot_id;
-            if(logical>=buttonsCount) return "inline:"+MediaDataController.getInstance(currentAccount).inlineBots.get(logical-buttonsCount).peer.user_id;
-            int[] rows={galleryButton,documentButton,musicButton,waveformDrawingButton,yandexMusicButton,pollButton,todoButton,contactButton,quickRepliesButton,locationButton,stickerButton,emojiButton,linksButton,richButton};
-            String[] ids={"gallery","file","audio","drawing","yandex_music","poll","todo","contact","quick_replies","location","sticker","emoji","link","article"};
+            if (logical >= buttonsCount) {
+                int inlinePosition = logical - buttonsCount;
+                List<TLRPC.TL_topPeer> inlineBots = MediaDataController.getInstance(currentAccount).inlineBots;
+                return inlinePosition < inlineBots.size() ? "inline:" + inlineBots.get(inlinePosition).peer.user_id : null;
+            }
+            if (logical < 0) return null;
+            int[] rows={galleryButton,documentButton,musicButton,waveformDrawingButton,yandexMusicButton,pollButton,todoButton,contactButton,quickRepliesButton,locationButton,stickerButton,emojiButton,linksButton,richButton,moneyButton};
+            String[] ids={"gallery","file","audio","drawing","yandex_music","poll","todo","contact","quick_replies","location","sticker","emoji","link","article","money"};
             for(int i=0;i<rows.length;i++) if(rows[i]==logical) return ids[i];
-            throw new IllegalStateException("Unknown attachment action");
+            return null;
         }
         void moveAttachment(int from,int to) {
-            if(from>=ghostDisplayOrder.size()||to>=ghostDisplayOrder.size()) return;
+            if(from<0||to<0||from>=ghostDisplayOrder.size()||to>=ghostDisplayOrder.size()) return;
             ghostDisplayOrder.add(to,ghostDisplayOrder.remove(from));
             notifyItemMoved(from,to);
         }
         void saveAttachmentOrder() {
             ArrayList<String> ids=new ArrayList<>();
-            for(int logical:ghostDisplayOrder) ids.add(attachmentId(logical));
+            for (int logical : ghostDisplayOrder) {
+                String id = attachmentId(logical);
+                if (id != null) ids.add(id);
+            }
             org.telegram.messenger.GhostAttachmentOrder.save(ids);
         }
         private final static int VIEW_TYPE_BUTTON = 0, VIEW_TYPE_BOT_BUTTON = 1;
@@ -6883,7 +6892,6 @@ public class ChatAttachAlert extends BottomSheet implements NotificationCenter.N
             emojiButton = -1;
             attachBotsStartRow = -1;
             attachBotsEndRow = -1;
-            moneyButton = -1;
 
             if (isPollAttach) {
                 galleryButton = buttonsCount++;
@@ -6983,12 +6991,18 @@ public class ChatAttachAlert extends BottomSheet implements NotificationCenter.N
                 }
             }
             ghostDisplayOrder.clear();
-            for(int i=0;i<getItemCount();i++) ghostDisplayOrder.add(i);
-            java.util.List<String> saved=org.telegram.messenger.GhostAttachmentOrder.read();
-            ghostDisplayOrder.sort((a,b)->{
-                int left=saved.indexOf(attachmentId(a)),right=saved.indexOf(attachmentId(b));
-                return Integer.compare(left<0?Integer.MAX_VALUE:left,right<0?Integer.MAX_VALUE:right);
-            });
+            int itemCount = getItemCount();
+            for (int i = 0; i < itemCount; i++) ghostDisplayOrder.add(i);
+            List<String> saved = org.telegram.messenger.GhostAttachmentOrder.read();
+            if (!saved.isEmpty()) {
+                int[] ranks = new int[itemCount];
+                for (int i = 0; i < itemCount; i++) {
+                    String id = attachmentId(i);
+                    int rank = id == null ? -1 : saved.indexOf(id);
+                    ranks[i] = rank < 0 ? Integer.MAX_VALUE : rank;
+                }
+                ghostDisplayOrder.sort((a, b) -> Integer.compare(ranks[a], ranks[b]));
+            }
             super.notifyDataSetChanged();
         }
 
